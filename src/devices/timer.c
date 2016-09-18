@@ -151,10 +151,12 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  wakeup_thread();
 }
 
 /* wake up sleeping thread! */
-static void wakeup_thread() {
+void 
+wakeup_thread() {
     struct list_elem* e;
     struct thread* t;
 
