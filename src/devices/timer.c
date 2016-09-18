@@ -157,7 +157,7 @@ static void wakeup_thread() {
     struct list_elem* e;
     struct thread* t;
 
-    for (e = list_begin(&sleep_list); e != list_end(&sleep_list) ; e = list_next(e)) {
+    for (e = list_begin(&sleep_list); list_next(e) != list_end(&sleep_list) ; e = list_next(e)) {
        t = list_entry(e, struct thread, elem);
        if(t->wakeuptime == timer_ticks()) {
            thread_unblock(t);
