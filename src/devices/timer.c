@@ -102,7 +102,7 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   
-  struct thread* t = current_thread();
+  struct thread* t = thread_current ();
   t->wakeuptime = start + ticks;
   
   list_push_back (&sleep_list, &t->elem);
