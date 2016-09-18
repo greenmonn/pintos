@@ -106,7 +106,8 @@ timer_sleep (int64_t ticks)
   t->wakeuptime = start + ticks;
   
   list_push_back (&sleep_list, &t->elem);
-  enum intr_leve old_level = intr_disable();
+  enum intr_level old_level = intr_disable();
+
 
   thread_block();
   intr_set_level (old_level);
