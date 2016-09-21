@@ -20,9 +20,7 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
-/* List of Sleeping Threads */
 static struct list sleep_list;
-
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -105,8 +103,8 @@ timer_sleep (int64_t ticks)
   
   struct thread* t = thread_current ();
   t->wakeuptime = start + ticks;
-  
-  list_push_back (&sleep_list, &t->elem);
+ // printf("timer_sleep call : now %d wake up %d later\n", start, ticks);
+  list_push_back (&sleep_list, &(t->elem));
   enum intr_level old_level = intr_disable();
 
 
@@ -159,11 +157,17 @@ void
 wakeup_thread() {
 	struct list_elem* e;
 	struct thread* t;
+    int i = 0;
 	if (!list_empty(&sleep_list)) {
 		for (e = list_begin(&sleep_list); e != list_end(&sleep_list) ; e = list_next(e)) {
-			t = list_entry(e, struct thread, elem);
-			if(t->wakeuptime == timer_ticks()) {
-				thread_unblock(t);
+            t = list_entry(e, struct thread, elem);
+			//printf("******* thread %d wakeuptime : %d\n",i++, t->wakeuptime);
+            //ASSERT(e->next != NULL);
+			if(t->wakeuptime <= timer_ticks()) {
+				e = list_remove(e);
+                e = list_prev(e);
+                thread_unblock(t);
+               // printf("thread unblocked\n");
 			}
 		}
 	}

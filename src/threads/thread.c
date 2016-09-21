@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* ADDED : List of processes in THREAD_BLOCK state */
+//static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -494,8 +497,6 @@ schedule_tail (struct thread *prev)
 
   /* Mark us as running. */
   curr->status = THREAD_RUNNING;
-
-  /* Start new time slice. */
   thread_ticks = 0;
 
 #ifdef USERPROG
