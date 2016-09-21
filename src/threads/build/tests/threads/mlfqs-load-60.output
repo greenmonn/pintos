@@ -1,4 +1,4 @@
-Writing command line to /tmp/MnRA1Ni36g.dsk...
+Writing command line to /tmp/OfcWyXpZWQ.dsk...
 warning: can't find squish-pty, so terminal input will fail
 bochs -q
 Kernel command line: -q -mlfqs run mlfqs-load-60
@@ -104,7 +104,7 @@ Executing 'mlfqs-load-60':
 (mlfqs-load-60) end
 Execution of 'mlfqs-load-60' complete.
 Timer: 18839 ticks
-Thread: 11533 idle ticks, 7309 kernel ticks, 0 user ticks
+Thread: 11487 idle ticks, 7355 kernel ticks, 0 user ticks
 Console: 5298 characters output
 Keyboard: 0 keys pressed
 Powering off...

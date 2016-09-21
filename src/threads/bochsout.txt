@@ -30,7 +30,7 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support:  
-00000000000i[MEM0 ] allocated memory at 0x7fd8a7748010. after alignment, vector=0x7fd8a7749000
+00000000000i[MEM0 ] allocated memory at 0x7f0468af9010. after alignment, vector=0x7f0468afa000
 00000000000i[MEM0 ] 4.00MB
 00000000000i[MEM0 ] rom at 0xf0000/65536 ('/usr/local/share/bochs/BIOS-bochs-latest')
 00000000000i[MEM0 ] rom at 0xc0000/32768 ('/usr/local/share/bochs/VGABIOS-lgpl-latest')
@@ -46,7 +46,7 @@
 00000000000i[     ] init_mem of 'extfpuirq' plugin device by virtual method
 00000000000i[     ] init_mem of 'speaker' plugin device by virtual method
 00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
-00000000000i[HD   ] HD on ata0-0: '/tmp/s7BWdQGVDp.dsk' 'flat' mode 
+00000000000i[HD   ] HD on ata0-0: '/tmp/dVoD8cKzjj.dsk' 'flat' mode 
 00000000000i[HD   ] Using boot sequence disk, none, none
 00000000000i[HD   ] Floppy boot signature check is enabled
 00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
@@ -73,28 +73,28 @@
 00000786523e[HD   ] ata0: device set to 1 which does not exist
 00000786815e[HD   ] ata1: device set to 0 which does not exist
 00000787108e[HD   ] ata1: device set to 1 which does not exist
-04074927600p[     ] >>PANIC<< SIGNAL 2 caught
-04074927600i[SYS  ] Last time is 4074
-04074927600i[NGUI ] bx_nogui_gui_c::exit() not implemented yet.
-04074927600i[CPU  ] protected mode
-04074927600i[CPU  ] CS.d_b = 32 bit
-04074927600i[CPU  ] SS.d_b = 32 bit
-04074927600i[CPU  ] | EAX=c0114000  EBX=c0100f2b  ECX=c0114000  EDX=00000001
-04074927600i[CPU  ] | ESP=c0114fc8  EBP=c0114fd0  ESI=00000000  EDI=00000000
-04074927600i[CPU  ] | IOPL=0 id vip vif ac vm rf nt of df IF tf SF zf af pf cf
-04074927600i[CPU  ] | SEG selector     base    limit G D
-04074927600i[CPU  ] | SEG sltr(index|ti|rpl)     base    limit G D
-04074927600i[CPU  ] |  CS:0008( 0001| 0|  0) 00000000 000fffff 1 1
-04074927600i[CPU  ] |  DS:0010( 0002| 0|  0) 00000000 000fffff 1 1
-04074927600i[CPU  ] |  SS:0010( 0002| 0|  0) 00000000 000fffff 1 1
-04074927600i[CPU  ] |  ES:0010( 0002| 0|  0) 00000000 000fffff 1 1
-04074927600i[CPU  ] |  FS:0010( 0002| 0|  0) 00000000 000fffff 1 1
-04074927600i[CPU  ] |  GS:0010( 0002| 0|  0) 00000000 000fffff 1 1
-04074927600i[CPU  ] | EIP=c0100f52 (c0100f52)
-04074927600i[CPU  ] | CR0=0x80010015 CR1=0 CR2=0x00000000
-04074927600i[CPU  ] | CR3=0x00112000 CR4=0x00000000
-04074927600i[CPU  ] >> eb
-04074927600i[CPU  ] >> f2
-04074927600i[CPU  ] >> : jmp .+0xfffffff2
-04074927600i[     ] restoring default signal behavior
-04074927600i[CTRL ] quit_sim called with exit code 1
+02058483788p[     ] >>PANIC<< SIGNAL 2 caught
+02058483788i[SYS  ] Last time is 2058
+02058483788i[NGUI ] bx_nogui_gui_c::exit() not implemented yet.
+02058483788i[CPU  ] protected mode
+02058483788i[CPU  ] CS.d_b = 32 bit
+02058483788i[CPU  ] SS.d_b = 32 bit
+02058483788i[CPU  ] | EAX=00000000  EBX=000000f7  ECX=0000070e  EDX=000003f8
+02058483788i[CPU  ] | ESP=c002fce4  EBP=c002fd1c  ESI=c010bb0b  EDI=c010ca0e
+02058483788i[CPU  ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf ZF af PF cf
+02058483788i[CPU  ] | SEG selector     base    limit G D
+02058483788i[CPU  ] | SEG sltr(index|ti|rpl)     base    limit G D
+02058483788i[CPU  ] |  CS:0008( 0001| 0|  0) 00000000 000fffff 1 1
+02058483788i[CPU  ] |  DS:0010( 0002| 0|  0) 00000000 000fffff 1 1
+02058483788i[CPU  ] |  SS:0010( 0002| 0|  0) 00000000 000fffff 1 1
+02058483788i[CPU  ] |  ES:0010( 0002| 0|  0) 00000000 000fffff 1 1
+02058483788i[CPU  ] |  FS:0010( 0002| 0|  0) 00000000 000fffff 1 1
+02058483788i[CPU  ] |  GS:0010( 0002| 0|  0) 00000000 000fffff 1 1
+02058483788i[CPU  ] | EIP=c010717e (c010717e)
+02058483788i[CPU  ] | CR0=0x80010015 CR1=0 CR2=0x00000000
+02058483788i[CPU  ] | CR3=0x00112000 CR4=0x00000000
+02058483788i[CPU  ] >> 66
+02058483788i[CPU  ] >> 90
+02058483788i[CPU  ] >> : nop 
+02058483788i[     ] restoring default signal behavior
+02058483788i[CTRL ] quit_sim called with exit code 1

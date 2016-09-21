@@ -74,6 +74,13 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+bool list_more_priority (const struct list_elem* e1, const struct list_elem* e2, void* aux UNUSED) {
+    struct thread* t1 = list_entry(e1, struct thread, elem);
+    struct thread* t2 = list_entry(e2, struct thread, elem);
+
+    return (t1->priority > t2->priority);
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -238,7 +245,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, list_more_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }

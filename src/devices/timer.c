@@ -30,6 +30,19 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
+bool list_wakeup_early (struct list_elem* e1, struct list_elem* e2, void* aux UNUSED) {
+    struct thread* t1 = list_entry(e1, struct thread, elem);
+    struct thread* t2 = list_entry(e2, struct thread, elem);
+    if(t1->wakeuptime < t2->wakeuptime)
+        return 1;
+    else if (t1->wakeuptime > t2->wakeuptime)
+        return 0;
+    if(t1->priority > t2->priority) {
+        return 1;
+    }
+    else return 0;
+    
+}
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
    corresponding interrupt. */
@@ -99,18 +112,21 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-
+  struct list_elem* e;
   
   struct thread* t = thread_current ();
   t->wakeuptime = start + ticks;
  // printf("timer_sleep call : now %d wake up %d later\n", start, ticks);
-  list_push_back (&sleep_list, &(t->elem));
+  list_insert_ordered (&sleep_list, &(t->elem), list_wakeup_early, NULL);
+  for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
+      printf("%d\n", list_entry(e, struct thread, elem)->priority);
+  }
   enum intr_level old_level = intr_disable();
 
 
   thread_block();
   intr_set_level (old_level);
-//  ASSERT (intr_get_level () == INTR_ON);
+ //  ASSERT (intr_get_level () == INTR_ON);
 //  while (timer_elapsed (start) < ticks) 
 //    thread_yield ();
 }
@@ -155,22 +171,17 @@ timer_interrupt (struct intr_frame *args UNUSED)
 /* wake up sleeping thread! */
 void 
 wakeup_thread() {
-	struct list_elem* e;
+	struct list_elem* e = list_begin(&sleep_list);
 	struct thread* t;
-    int i = 0;
-	if (!list_empty(&sleep_list)) {
-		for (e = list_begin(&sleep_list); e != list_end(&sleep_list) ; e = list_next(e)) {
-            t = list_entry(e, struct thread, elem);
-			//printf("******* thread %d wakeuptime : %d\n",i++, t->wakeuptime);
-            //ASSERT(e->next != NULL);
-			if(t->wakeuptime <= timer_ticks()) {
-				e = list_remove(e);
-                e = list_prev(e);
-                thread_unblock(t);
-               // printf("thread unblocked\n");
-			}
-		}
-	}
+    	while (e != list_end(&sleep_list)) {
+        t = list_entry(e, struct thread, elem);
+        if (t->wakeuptime <= timer_ticks()) {
+            e = list_remove(e);
+            e = list_prev(e);
+            thread_unblock(t);
+        }
+        e = list_next(e);
+    }
 }
 
 

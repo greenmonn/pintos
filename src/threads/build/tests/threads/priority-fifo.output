@@ -1,4 +1,4 @@
-Writing command line to /tmp/ImnlOOlLYh.dsk...
+Writing command line to /tmp/7hVpoJDrK4.dsk...
 warning: can't find squish-pty, so terminal input will fail
 bochs -q
 Kernel command line: -q run priority-fifo
@@ -29,8 +29,8 @@ Executing 'priority-fifo':
 (priority-fifo) iteration: 14 15 10 11 12 13 14 15 12 13 14 15 13 14 15 15
 (priority-fifo) end
 Execution of 'priority-fifo' complete.
-Timer: 276 ticks
-Thread: 0 idle ticks, 279 kernel ticks, 0 user ticks
+Timer: 278 ticks
+Thread: 0 idle ticks, 280 kernel ticks, 0 user ticks
 Console: 1555 characters output
 Keyboard: 0 keys pressed
 Powering off...
