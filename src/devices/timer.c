@@ -116,11 +116,11 @@ timer_sleep (int64_t ticks)
   
   struct thread* t = thread_current ();
   t->wakeuptime = start + ticks;
- // printf("timer_sleep call : now %d wake up %d later\n", start, ticks);
   list_insert_ordered (&sleep_list, &(t->elem), list_wakeup_early, NULL);
-  for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
+  /* for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
       printf("%d\n", list_entry(e, struct thread, elem)->priority);
   }
+  barrier(); */
   enum intr_level old_level = intr_disable();
 
 
