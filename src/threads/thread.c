@@ -81,6 +81,12 @@ bool list_more_priority (const struct list_elem* e1, const struct list_elem* e2,
     return (t1->priority > t2->priority);
 }
 
+void run_max_priority() {
+    if (!list_empty(&ready_list) && 
+            thread_current()->priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority) {
+        thread_yield();
+    }
+}
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -208,6 +214,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  run_max_priority();
 
   return tid;
 }
@@ -325,6 +332,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  run_max_priority();
 }
 
 /* Returns the current thread's priority. */
