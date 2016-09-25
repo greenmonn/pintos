@@ -82,7 +82,7 @@ bool list_more_priority (const struct list_elem* e1, const struct list_elem* e2,
 }
 
 void run_max_priority() {
-    if (!list_empty(&ready_list) && 
+    if (thread_current() != idle_thread  && !list_empty(&ready_list) && 
             thread_current()->priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority) {
         thread_yield();
     }
