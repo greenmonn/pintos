@@ -180,7 +180,7 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
-  lock->donator = NULL;
+  lock->donations = 0;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -206,10 +206,11 @@ lock_acquire (struct lock *lock)
       struct thread* me = thread_current();
       
       if(lock->holder != NULL && me->priority > holder->priority) {
-          lock->donator = thread_current();
-          holder->original_pri = holder->priority;
-          holder->priority = me->priority;
           
+          holder->original_pri[holder->pri_top] = holder->priority;
+          holder->pri_top += 1;
+          holder->priority = me->priority;
+          lock->donations += 1;
       }
 
   } //TODO : How to restore priority when lock_release() ?
@@ -248,10 +249,10 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  if (lock->donator != NULL) {
-      thread_current() ->priority = thread_current() ->original_pri;
-      thread_current() ->original_pri = -1;
-      lock->donator = NULL;
+  if (lock->donations != 0) {
+      thread_current() ->pri_top -= 1;
+      thread_current() ->priority = thread_current() ->original_pri[(thread_current() ->pri_top)];
+      lock->donations -= 1;
   }
   lock->holder = NULL;
   

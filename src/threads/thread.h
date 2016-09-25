@@ -100,8 +100,8 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     int64_t wakeuptime;                     /* ALARM CLOCK : TIME TO WAKE UP */
-    int original_pri; //original priority .. for calling set_priority when having donted priority
-  
+    int original_pri[8]; //original priority .. for calling set_priority when having donted priority
+    int pri_top; //initially 0 
   };
 
 /* If false (default), use round-robin scheduler.
