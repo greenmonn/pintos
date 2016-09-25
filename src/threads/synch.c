@@ -180,6 +180,7 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
+  lock->donator = NULL;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -198,6 +199,20 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  //if lock holder is lower priority then current thread, donate!
+  //but current thread should asserted to block in this sema_down.
+  if ((lock->semaphore).value == 0) { //it would be blocked
+      struct thread* holder = lock->holder;
+      struct thread* me = thread_current();
+      
+      if(lock->holder != NULL && me->priority > holder->priority) {
+          lock->donator = thread_current();
+          holder->original_pri = holder->priority;
+          holder->priority = me->priority;
+          
+      }
+
+  } //TODO : How to restore priority when lock_release() ?
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
@@ -233,8 +248,13 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  if (lock->donator != NULL) {
+      thread_current() ->priority = thread_current() ->original_pri;
+      thread_current() ->original_pri = -1;
+      lock->donator = NULL;
+  }
   lock->holder = NULL;
+  
   sema_up (&lock->semaphore);
 }
 
