@@ -180,7 +180,7 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
-  lock->donations = 0;
+  lock->donor_pri = -1;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -193,6 +193,18 @@ lock_init (struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 void
+lock_donation(struct lock *lock) {
+    if (lock == NULL) 
+        return;
+    struct thread* curr = thread_current();
+    if (lock->holder->priority < curr->priority) {
+        lock->donor_pri = curr->priority;
+        lock->holder->priority = curr->priority;
+        lock_donation(lock->holder->trying_lock);
+    }
+}
+
+void
 lock_acquire (struct lock *lock)
 {
   ASSERT (lock != NULL);
@@ -202,20 +214,13 @@ lock_acquire (struct lock *lock)
   //if lock holder is lower priority then current thread, donate!
   //but current thread should asserted to block in this sema_down.
   if ((lock->semaphore).value == 0) { //it would be blocked
-      struct thread* holder = lock->holder;
-      struct thread* me = thread_current();
-      
-      if(lock->holder != NULL && me->priority > holder->priority) {
-          
-          holder->original_pri[holder->pri_top] = holder->priority;
-          holder->pri_top += 1;
-          holder->priority = me->priority;
-          lock->donations += 1;
-      }
+      thread_current() ->trying_lock = lock;
+      lock_donation(lock);          
 
-  } //TODO : How to restore priority when lock_release() ?
+  } 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+  thread_current()->trying_lock = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -249,13 +254,13 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  if (lock->donations != 0) {
-      thread_current() ->pri_top -= 1;
-      thread_current() ->priority = thread_current() ->original_pri[(thread_current() ->pri_top)];
-      lock->donations -= 1;
-  }
+  if (lock->donor_pri != -1) {
+      if (lock->donor_pri == thread_current()->priority) {
+          thread_current()->priority = thread_current()->original_pri;
+      }
+      lock->donor_pri = -1;
+  }  
   lock->holder = NULL;
-  
   sema_up (&lock->semaphore);
 }
 

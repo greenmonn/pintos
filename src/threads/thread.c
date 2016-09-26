@@ -331,10 +331,11 @@ thread_yield (void)
 void
 thread_set_priority (int new_priority) 
 {
-  if (thread_current ()->pri_top != 0) {
-      thread_current ()->original_pri[0] = new_priority;
+  if (thread_current ()->original_pri != thread_current ()->priority) {
+        thread_current() ->original_pri = new_priority;
   }
   else {
+      thread_current ()->original_pri = new_priority;
       thread_current ()->priority = new_priority;
   }
   run_max_priority();
@@ -462,8 +463,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  
-  t->pri_top = 0; //not donated
+  t->trying_lock = NULL;  
+  t->original_pri = priority; //not donated
   t->magic = THREAD_MAGIC;
 }
 
