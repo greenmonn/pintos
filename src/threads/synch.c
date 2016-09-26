@@ -202,7 +202,7 @@ lock_donation(struct lock *lock) {
     if (lock->holder->priority < curr->priority) {
         lock->donor_pri = curr->priority;
         lock->holder->priority = curr->priority;
-        lock_donation(lock->holder->trying_lock);
+        lock_donation(lock->holder->acquiring_lock);
     }
 }
 
@@ -216,13 +216,13 @@ lock_acquire (struct lock *lock)
   //if lock holder is lower priority then current thread, donate!
   //but current thread should asserted to block in this sema_down.
   if ((lock->semaphore).value == 0) { //it would be blocked
-      thread_current() ->trying_lock = lock;
+      thread_current() ->acquiring_lock = lock;
       lock_donation(lock);          
 
   } 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-  thread_current()->trying_lock = NULL;
+  thread_current()->acquiring_lock = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
