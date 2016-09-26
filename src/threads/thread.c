@@ -466,6 +466,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->acquiring_lock = NULL;  
   t->original_pri = priority; //not donated
   t->magic = THREAD_MAGIC;
+  list_init(&t->acquired_lock_list);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

@@ -102,6 +102,7 @@ struct thread
     int64_t wakeuptime;                     /* ALARM CLOCK : TIME TO WAKE UP */
     int original_pri; //original priority .. for calling set_priority when having donated priority
     struct lock *acquiring_lock;
+    struct list acquired_lock_list;
   };
 
 /* If false (default), use round-robin scheduler.
