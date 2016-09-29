@@ -108,7 +108,6 @@ struct thread
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
-void run_max_proirity(void);
 bool list_more_priority (const struct list_elem* e1, const struct list_elem* e2, void* aux);
 
 extern bool thread_mlfqs;
