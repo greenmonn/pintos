@@ -320,8 +320,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (curr != idle_thread) 
-    list_insert_ordered (&ready_list, &curr->elem, list_more_priority, NULL);
+  if (curr != idle_thread) { 
+        list_sort(&ready_list, list_more_priority, NULL);
+      list_insert_ordered (&ready_list, &curr->elem, list_more_priority, NULL);
+  }
   curr->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -331,13 +333,15 @@ thread_yield (void)
 void
 thread_set_priority (int new_priority) 
 {
-  if (thread_current ()->original_pri != thread_current ()->priority) {
-        thread_current() ->original_pri = new_priority;
+    enum intr_level old_level = intr_disable();
+  if (thread_current ()->original_pri != thread_current ()->priority) {  
+      thread_current() ->original_pri = new_priority;
   }
   else {
       thread_current ()->original_pri = new_priority;
       thread_current ()->priority = new_priority;
   }
+  intr_set_level(old_level);
   run_max_priority();
 }
 
