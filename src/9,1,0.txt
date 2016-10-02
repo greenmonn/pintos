@@ -1,0 +1,539 @@
++--------------------+
+|       CS 330       |
+| PROJECT 1: THREADS |
+|   DESIGN DOCUMENT  |
++--------------------+
+				   
+---- GROUP ----
+
+
+Hyeongjong Kim <fa6842@kaist.ac.kr>
+Juyeon Yoon <greenmon@kaist.ac.kr>
+
+
+---- PRELIMINARIES ----
+
+
+We referred to the lecture notes and pintos document to implement structures and methods for this project.
+
+We got a help to use gdb from our assigned TA, Seungcheol Lee.
+
+
+
+ALARM CLOCK
+===========
+
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+/* thread.h */
+struct thread {
+	int64_t wake uptime; >>ALARM CLOCK : TIME TO WAKE UP
+};
+
+/* timer.c */
+static struct list sleep_list; >> list for sleeping threads
+
+bool list_wakeup_early (struct list_elem* e1, struct list_elem* e2, void* aux UNUSED);
+>> Compares the wake uptime and priority of two list elements A and B
+
+void wakeup_thread(); >> function that unblocks the thread that wake up time is passed. 
+
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+>> including the effects of the timer interrupt handler.
+
+When the time_sleep is called, first thing to do is to get the current thread.
+And then it calculate the time to wake up and set the value in the variable 
+wakeuptime of current thread. And then insert the elem of this thread in the 
+sleep_list. The threads are listed in ascending order according to wakeuptime 
+and priority of threads. And then it disables the external interrupts. And then 
+it blocks current threads. And then it enables the external interrupts.
+
+>> A3: What steps are taken to minimize the amount of time spent in
+>> the timer interrupt handler?
+
+When timer interrupts is called, we do only things to be done to minimize 
+the time in this interrupt. First, we add wakeup_thread() function in the 
+timer_interrupt. So make it calls the wakeup_thread. And in the wakeup_thread 
+function, it travel the list from the start to the end. And one by one, it 
+unblocks the threads that pass the wake up time. In the list, multiple threads 
+that has same wake up time can exists. So we must not stop the travel even 
+though we find the thread that pass the wake up time. But if we find the thread 
+that dont's pass the wake up time, then we can break. Since it's sorted list,
+there is no chance that thread that we need to unblock exists.
+
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+
+We avoid race conditions by unblocking the threads, one by one. If we block
+a thread, then it will not call timer_sleep until it wakes up. So we can
+deal with other threads’ call of timer_sleep(). 
+ 
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+
+we avoid race conditions by simply disabling timer interrupts.
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+First, we consider to use thread_yield instead of thread_block. Since
+timer_sleep() function has thread_yield. But then we realize that it is 
+hard to tell whether this thread is sleeping thread or ready thread if 
+we decide to use this thread_yield. So we decide to use block_thread and 
+separate sleeping threads to the ‘BLOCKED’ state from ‘READY’ thread queue.
+
+			 PRIORITY SCHEDULING
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+/* thread.h */
+struct thread {
+	int original_pri;	>> Each thread keeps its original priority
+struct lock* acquiring_lock;	>> Each thread keeps the lock trying to acquire(), but didn’t finish to be the holder of the lock yet. if there is no lock trying to hold, initially point to NULL.
+
+struct list acquired_lock_list;	>> List of locks the thread is now holding : for multiple priority donation
+};
+
+bool list_more_priority(const struct list_elem* e1, const struct list_elem* e2, void* aux); >> Helper method to sort the list in descending order of priority. (Thread of more priority located first);
+
+void run_max_priority(void); 
+>> When new process is created OR current thread’s priority is changed, It needs to immediately check whether the running thread is highest priority thread. If not, this function calls thread_yield() to run highest priority thread in the ready list.
+
+/* thread.c */
+tid_t thread_create(const char *name, int priority, thread_func *function, void *aux) {
+	…
+	run_max_priority();
+}
+
+void thread_unblock(struct thread *t) {
+	list_insert_ordered(&ready_list, &t->elem, list_more_priority, 		NULL);
+} >> For priority scheduling, ready_list should be sorted by priority.
+
+void thread_yield() {
+	list_insert_ordered(&ready_list, &t->elem, list_more_priority, 		NULL);
+} >> Same idea with thread_unblock()
+
+static void init_thread(struct thread *t, const char *name, int priority) {
+	t->acquiring_lock = NULL;
+	t->original_pri = priority;
+	list_init(&t->acquired_lock_list);
+} >> New thread struct members for priority donation
+
+void thread_set_priority(int new_priority) {
+	if (thread_current()->original_pri != thread_current()->priority) {
+		thread_current()->original_pri = new_priority;
+	} >> if current thread’s priority is donated, change only the 			original priority
+	else {
+		thread_current()->original_pri = new_priority;
+		thread_current()->priority = new_priority;
+	}
+	run_max_priority(); << Now running thread may not have the highest 					 priority.
+}
+
+/* synch.h */
+struct lock
+{
+	..
+	int donor_pri;	>> Save the recent donor’s priority per a lock
+	struct list_elem elem; >> element for acquired_lock_list (*refer 						    struct thread)
+};
+
+
+/* synch.c */
+
+void sema_up(struct semaphore *sema) {
+	list_sort(&sema->waiters, list_more_priority, NULL); >> to unblock high priority thread first among the waiters
+	..
+	run_max_priority(); >> In case of the thread just unblocked has highest priority
+}
+
+void cond_signal(struct condition *cond, struct lock *lock UNUSED) {
+	list_sort(&cond->waiters, list_sema_more_priority, NULL);
+} >> Sort the waiters with priority. Note that the elements in the waiters are type semaphore_elem, not thread
+
+bool list_sema_more_priority (const struct list_elem* e1, const struct list_elem* e2,     void* aux UNUSED)
+{
+	struct semaphore_elem* s1 = list_entry(e1, struct semaphore_elem, elem);
+	struct semaphore_elem* s2 = list_entry(e2, struct semaphore_elem, elem);
+	
+	return (s1->priority > s2->priority);
+} >> So we implemented new priority-comparing function for semaphore_elem type. (Also descending order)
+
+void lock_init(struct lock *lock)
+{
+	lock->donor_pri = -1;	>> Default value is -1, so holder is not 						   donated if this value is preserved
+} 
+
+void lock_donation(struct lock *lock) {
+	if (lock == NULL)
+	     return;
+	struct thread* curr = thread_current();
+	if (lock->holder->priority < curr->priority) {
+	    lock->donor_pri = curr->priority;
+	    lock->holder->priority = curr->priority;
+	    lock_donation(lock->holder->acquiring_lock);
+	}
+} >> Recursively change the holder’s priority while the acquiring thread has higher priority
+
+bool list_lock_more_priority (const struct list_elem* e1, const struct list_elem* e2,     void* aux UNUSED)
+{
+	struct lock* l1 = list_entry(e1, struct lock, elem);
+	struct lock* l2 = list_entry(e2, struct lock, elem);
+	
+	return (l1->donor_pri > l2->donor_pri);
+} >> Comparing function for sorting acquired_lock_list
+
+
+void lock_acquire(struct lock *lock) {
+	if ((lock->semaphore).value == 0) { 
+		thread_current() ->acquiring_lock = lock;
+		lock_donation(lock);
+	}
+	sema_down (&lock->semaphore);
+	lock->holder = thread_current ();
+
+	list_push_back(&thread_current() ->acquired_lock_list, &lock->elem);
+	thread_current()->acquiring_lock = NULL;
+} >> Before the thread is blocked, it performs priority donation using lock_donation(). we hold a list of acquired locks to handle multiple donation case
+
+void
+lock_release (struct lock *lock) 
+{
+
+  list_remove(&lock->elem);
+
+  if (lock->donor_pri != -1) {
+      if (lock->donor_pri == thread_current()->priority) {
+		  if (!list_empty(&thread_current()->acquired_lock_list)) {
+			  list_sort(&thread_current()->acquired_lock_list,list_lock_more_priority,NULL);
+			  thread_current()->priority = 
+				  list_entry(list_front(&thread_current()->acquired_lock_list),
+						  struct lock, elem)->donor_pri;
+		  } else {
+			  thread_current()->priority = thread_current()-> original_pri;
+		  }
+      }
+      lock->donor_pri = -1;
+  }  
+  lock->holder = NULL;
+  sema_up (&lock->semaphore);
+} >> Restore holder’s priority to the original one. (If there is any other acquired lock to the holder, restore to second-high donated priority) When a lock is released, we should assert that the lock is removed from the holder’s acquired list and the saved donor priority is set to -1. (Just in case there exists next thread to hold the lock)
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+void lock_acquire (struct lock *lock)
+
+When thread acquire lock, first check whether this lock has holder or not. This can be checked by looking the value of lock->semaphore. If it is 0, it has holder. And then if the lock has holder, 
+this means it cannot acquire this lock. So it should wait until this lock is released. So we put the lock in the variable acquiring_lock. (Since we need to know whether this thread is waiting for lock to release or not. And if it is, we need to know which lock this threads is waiting for. This is all for priority donation. Since when we do the priority donation, we want to danate priority of this thread to all of nested threads.) And then So in the lock_donation function, we first check this lock is null or not. (Since it is recursive function, it needs base case. And base case is when lock holder has no acquiring_lock because it means this holder is the end of the nested threads.) And then if it is not null, we check priority of lock holder and priority of current threads. If lock holder’s priority is lower than current thread’s priority, we do the donation. We put the priority of current thread in the variable lock->donor_pi (The lock->donor_pri is for lock release. it is for checking this lock was donated priority or not and also for checking that thread is using their priority to release proper lock or not. If donor_pi and priority of thread is not same, then it must not change the priority of the thread. Since it didn’t release the lock that the donor thread request to release.) and lock->holder->priority. And then we do the lock_donation using variable lock->holder->acquiring_lock. It will also donate priority to acquiring_lock’s holder if lock->holder->acquiring_lock is not null for nested donation. By this process, donor_pi and priority always have highest priority of donor threads’ priority. And then do the sema_down. If this lock has holder then, current thread will be blocked. (If it’s not, make sema’s value down.) Later this lock has no holder and this lock is released, this thread will be unblocked. And then finish the lock_acquire. Make sema’s value down and this lock’s holder become current thread. And then put the lock->elem in the acquired_lock_list of current list. (The acquired_lock_list is for multiple donation. When the thread has multiple lock, thread will be donated multiple priority from multiple threads for releasing multiple locks. So when it needs to release lock and restore priority, it needs history of priority. So we look up this list and find next priority to use.) And then variable acquiring_lock become null. Since acquirng_lock process is done.
+
+void lock_release (struct lock *lock)
+
+
+When thread release lock first remove lock_elem from acquired_lock_list since it’s gonna be released so it should not be in the acquired_lock_list. And then check lock->donor_pri is -1 or not. If it is -1, then it means this lock has no donor threads. So it don’t need to restore priority. But if it is not -1, check donor_pi and priority of current thread is same or not. If it is not same, we also don’t need to restore priority. Since the fact that donor_pri and priority of current thread is not same means that this thread release lower priority lock with high priority. So this priority is necessary to release high priority lock which the thread that donate this priority is waiting for. If these value are same, then check acquired_lock_list is empty to not. Since the fact that donor_pri and priority of current thread is same means that this thread release proper priority lock with proper priority. So it should restore another priority. So check acquired_lock_list to get this priority. If it is empty, this means there is no lock to release in the future. So it don’t need to restore any other priority than original priority. So priority of current thread become original priority by getting this value form original_pri. And if it is not empty, this means there are locks to release in the future. So we need to restore proper priority from acquire_lock_list. So sort the acquire_lock_list by this lock’s priority. Then get the highest priority in the list and put it in the current thread’s priority. After restoring priority, we don’t need donor_pi so we reset this value by putting -1 in it. And then make lock->holder null since this lock is released. And then do the sema_up. 
+
+take example like this
+main thread, priority 31, has lock lock_a. 
+A thread, priority 32, has lock lock_b, and acquire lock_a
+B thread, priority 33, acquire lock_b
+ 
+Step 1: At the beginning:
+=========================
+.---------------------------------------------------.
+|                main Thread (Beginning)            |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            31 |
+| original_pri      |                            31 |
+| aquiring_lock     | NULL                          |
+| acquired_lock_list| {lock_a (donor_pri = -1)}     |
+'-------------------+-------------------------------'
+.---------------------------------------------------.
+|                Thread A (Beginning)               |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            32 |
+| original_pri      |                            32 |
+| acquiring_lock    | NULL                          |
+| acquired_lock_list| {lock_b (donor_pi = -1)}      |
+'-------------------+-------------------------------'
+.---------------------------.
+|    Thread B (Beginning)   |
++-------------------+-------+
+| member            | value |
++-------------------+-------+
+| priority          |    33 |
+| original_pri      |    33 |
+| aquiring_lock     | NULL  |
+| acquired_lock_list| {}    |
+'-------------------+-------'
+==================================================================
+ 
+Step 2: A acquires lock_a:
+==========================
+.---------------------------------------------------.
+|                main Thread (A acquires L_a)       |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            32 |
+| original_pri      |                            31 |
+| aquiring_lock     | NULL                          |
+| acquired_lock_list| {lock_a (donor_pri = 32)}     |
+'-------------------+-------------------------------'
+.---------------------------------------------------.
+|                Thread A (A acquires L_a)          |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            32 |
+| original_pri      |                            32 |
+| acquiring_lock    | lock_a                        |
+| acquired_lock_list| {lock_b (donor_pi = -1)}      |
+'-------------------+-------------------------------'
+.---------------------------.
+| Thread B (A acquires L_a) |
++-------------------+-------+
+| member            | value |
++-------------------+-------+
+| priority          |    33 |
+| original_pri      |    33 |
+| aquiring_lock     | NULL  |
+| acquired_lock_list| {}    |
+'-------------------+-------'
+==================================================================
+ 
+STEP 3-1: B acquires lock_b:
+============================
+.---------------------------------------------------.
+|       main Thread (B acquired L_b, Step 1)        |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            32 |
+| original_pri      |                            31 |
+| aquiring_lock     | NULL                          |
+| acquired_lock_list| {lock_a (donor_pri = 32)}     |
+'-------------------+-------------------------------'
+.---------------------------------------------------.
+|         Thread A (B acquired L_b, Step 1)         |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            33 |
+| original_pri      |                            32 |
+| acquiring_lock    | lock_a                        |
+| acquired_lock_list| {lock_b (donor_pi = 33)}      |
+'-------------------+-------------------------------'
+.----------------------------------------.
+|    Thread B (B acquired L_b, Step 1)   |
++-------------------+--------------------+
+| member            | value              |
++-------------------+--------------------+
+| priority          |                 33 |
+| original_pri      |                 33 |
+| aquiring_lock     | lock_b             |
+| acquired_lock_list| {}                 |
+'-------------------+--------------------'
+==================================================================
+ 
+STEP 3-2: B acquires lock_b:
+============================
+.---------------------------------------------------.
+|       main Thread (B acquires L_b, Step 2)        |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            33 |
+| original_pri      |                            31 |
+| aquiring_lock     | NULL                          |
+| acquired_lock_list| {lock_a (donor_pri = 33)}     |
+'-------------------+-------------------------------'
+.---------------------------------------------------.
+|         Thread A (B acquires L_b, Step 2)         |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            33 |
+| original_pri      |                            32 |
+| acquiring_lock    | lock_a                        |
+| acquired_lock_list| {lock_b (donor_pi = 33)}      |
+'-------------------+-------------------------------'
+.----------------------------------------.
+|    Thread B (B acquired L_b, Step 2)   |
++-------------------+--------------------+
+| member            | value              |
++-------------------+--------------------+
+| priority          |                 33 |
+| original_pri      |                 33 |
+| aquiring_lock     | lock_b             |
+| acquired_lock_list| {}                 |
+'-------------------+--------------------'
+==================================================================
+ 
+STEP 4: main releases lock_a:
+==========================
+.---------------------------------------------------.
+|          main Thread (main releases L_a)          |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            31 |
+| original_pri      |                            31 |
+| aquiring_lock     | NULL                          |
+| acquired_lock_list| {}                            |
+'-------------------+-------------------------------'
+.---------------------------------------------------.
+|            Thread A (main releases L_a)           |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            33 |
+| original_pri      |                            32 |
+| acquiring_lock    | NULL                          |
+| acquired_lock_list| {lock_b (donor_pi = 33),      |
+|                   |  lock_a (donor_pri = -1)}     |
+'-------------------+-------------------------------'
+.------------------------------.
+| Thread B (main releases L_a) |
++-------------------+----------+
+| member            | value    |
++-------------------+----------+
+| priority          |       33 |
+| original_pri      |       33 |
+| aquiring_lock     | lock_b   |
+| acquired_lock_list| {}       |
+'-------------------+----------'
+==================================================================
+ 
+STEP 5: A releases lock_b:
+==========================
+.---------------------------------------------------.
+|           main Thread (A releases L_b)            |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            31 |
+| original_pri      |                            31 |
+| aquiring_lock     | NULL                          |
+| acquired_lock_list| {}                            |
+'-------------------+-------------------------------'
+.---------------------------------------------------.
+|             Thread A (A releases L_b)             |
++-------------------+-------------------------------+
+| member            | value                         |
++-------------------+-------------------------------+
+| priority          |                            32 |
+| original_pri      |                            32 |
+| acquiring_lock    | NULL                          |
+| acquired_lock_list| {lock_a (donor_pri = -1)}     |
+'-------------------+-------------------------------'
+.-----------------------------------------------.
+|           Thread B (A releases L_b)           |
++-------------------+---------------------------+
+| member            | value                     |
++-------------------+---------------------------+
+| priority          |                        33 |
+| original_pri      |                        33 |
+| aquiring_lock     | NULL                      |
+| acquired_lock_list| {lock_b (donor_pri = -1)} |
+'-------------------+---------------------------'
+==================================================================
+
+---- ALGORITHMS ----
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+The waiters list of semaphore is sorted in descending order by threads’ priorities just before choosing a thread to primarily unblock. So the front element popped from the front should be the highest priority thread. Because lock is a specialization of a semaphore, same reason is applied. 
+condition variable also has waiters list consists of semaphores bound to the threads. semaphore_elem struct holds the priority of assigned thread,  So in cond_signal(), the waiters list of a condition variable is also sorted by priorities, the semaphore installed to the highest priority thread is primarily signaled to ‘up’.
+
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+
+When lock_acquire() is called, The ‘acquiring’ lock is saved to the current thread. So even in ‘BLOCKED’ state, when someone else tries its holding lock to acquire and donate higher priority to this thread, this thread can give nested-donation to the holder of ‘acquiring_lock’. This procedure is implemented as the recursive call of lock_donation(), passing its acquiring_lock for the argument.
+
+
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+
+We can ensure that the holder of the lock has received a priority donation by one of the waiting-to-acquire threads, by checking the member variable ‘donor_pri’ of the lock. The donor_pri would be not -1. That’s because we change this value to donor’s priority in the previous lock_donation() function called by lock_acquire() of this lock. So, we try to restore the holder’s value to its original one. If current thread is holding another lock and has received donation, (But the donor_pri of this lock would be lower than current donated priority.) it restores the value to the highest remaining donor_pri, by checking the sorted list of acquired_lock_list of current thread. if the list is empty, current thread would restore its value to its original priority of which is before the entire donations.
+
+
+
+
+---- SYNCHRONIZATION ----
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+
+While setting up priority, timer interrupt can occur and force a preemption. Then, another thread is possible to execute and may try to donate its priority to the unfinished-setting-priority thread. Out of order in assigning a new priority may cause any different result to program. However, in our implementation, on yield() we can assert that next running thread has the highest priority. Because setting up current running thread’s priority hasn’t finished, it must still have the highest priority. So after the preemption it just come back again and finish the thread_set_priority() function. But for performance(prevent worthless yield() call) we just disabled interrupt during setting the priority. It would be a better solution to use a lock to block all other threads not to preempt,
+
+---- RATIONALE ----
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+To implement priority scheduling, we simply changed the waiters list to be ordered by the priorities of blocked threads. At first we used list_insert_ordered function, but by handling Priority Donation, we found some cases some of the priorities of waiters change during the priority donation to the holder thread. So we decided to use list_sort function just before popping the highest-priority waiter thread of the list. 
+
+To implement priority donation to handle priority inversion problem, We chose to save the original priority of the thread, acquiring_lock, and list of holding locks in the thread structure. Also, we added donor’s priority to each lock structure. So we could treat nested donation by checking whether the holder thread has acquiring lock, and recursive call of lock_donation() function. by using recursive function call, we didn’t have to limit the nested depth. (The basis case is, there is no acquiring lock anymore)
+
+We could also cover the multiple donation case by restore priority by checking another holding locks’ saved priority by their donors. Finally, we could handle thread_set_priority(), setting original_priority owned by current thread, not affecting donated one. We previously considered to hold donated priorities as a list and add it to the thread structure, but we couldn’t decide by which lock the priority had been donated. Moreover, it couldn’t cover the multiple donation cases effectively because we didn’t assert in what order the locks would be released in the holder thread. So we finally decided to add a member “donor_pri” per a lock and hold the list of “acquired locks” per a thread. with a simple sorting method, we could successfully handle the multiple donation cases by just using simple sorting method.
+
+
+SURVEY QUESTIONS
+================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+Implementing alarm clock was relatively simple, but we underwent trial and error using list structure, because we had to understand thread structure and list_element. Priority donation was the hardest one of the problem, we had some problem designing a proper algorithm covering all of the test cases.
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+While implementing priority donation, we could understand deeply about thread system and synchronization variables. We could get an insight to the context switching and preemption by timer interrupt to achieve concurrency.
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+Be careful treating list method, because we should keep the pointer to the next element to traverse it, but the element may be already removed from the list. Then you would meet segmentation fault.
+And, before starting writing codes, do your clear design first and write a pseudo code.
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+Thanks for teaching us how to use gdb.
+
+>> Any other comments?
+
+no.
