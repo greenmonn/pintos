@@ -174,12 +174,14 @@ wakeup_thread() {
 	struct list_elem* e = list_begin(&sleep_list);
 	struct thread* t;
     	while (e != list_end(&sleep_list)) {
-        t = list_entry(e, struct thread, elem);
-        if (t->wakeuptime <= timer_ticks()) {
-            e = list_remove(e);
-            e = list_prev(e);
-            thread_unblock(t);
-        }
+        	t = list_entry(e, struct thread, elem);
+        	if (t->wakeuptime <= timer_ticks()) {
+            	e = list_remove(e);
+            	e = list_prev(e);
+            	thread_unblock(t);
+        	} else {
+				break;
+			}
         e = list_next(e);
     }
 }
