@@ -65,7 +65,9 @@ timer_interrupt. So make it calls the wakeup_thread. And in the wakeup_thread
 function, it travel the list from the start to the end. And one by one, it 
 unblocks the threads that pass the wake up time. In the list, multiple threads 
 that has same wake up time can exists. So we must not stop the travel even 
-though we find the thread that pass the wake up time. 
+though we find the thread that pass the wake up time. But if we find the thread 
+that dont's pass the wake up time, then we can break. Since it's sorted list,
+there is no chance that thread that we need to unblock exists.
 
 ---- SYNCHRONIZATION ----
 
