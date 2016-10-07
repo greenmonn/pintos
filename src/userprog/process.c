@@ -88,6 +88,9 @@ start_process (void *f_name)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+    while(1) {
+    }
+    ;
   return -1;
 }
 
@@ -195,7 +198,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, int argc, char **tmp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -205,6 +208,24 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
+
+int calc_argc(char* string) {
+    char* save_ptr, token;
+    int count = 0;
+    int slength = strlen(string);
+    char* tmpstring = (char*)malloc(slength*sizeof(char));
+    strlcpy(tmpstring, string, slength);
+
+    for (token = strtok_r(tmpstring, " ", &save_ptr); token != NULL ; 
+            token = strtok_r(NULL, " ", &save_ptr)) {
+        count++;
+    }
+    free(tmpstring);
+    return count;
+}
+
+    
+
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
@@ -220,6 +241,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+
+  /* filename parse */
+  int argc = calc_argc(file_name);
+  char* tmp = (char*)malloc(argc * sizeof(char*));
+  char* save_ptr, token;
+  int index = 0;
+  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
+          token = strtok_r (NULL, " ", &save_ptr)) {
+      tmp[index] = token;
+      index++;
+  }
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -302,9 +334,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, argc, tmp))
     goto done;
-
+  free(tmp);
+  char buf[150];
+  hex_dump(PHYS_BASE-100, (void*)buf, 150, true); 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -427,10 +461,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, int argc, char **tmp) 
 {
   uint8_t *kpage;
   bool success = false;
+  char** arg_addr = (char**)malloc(argc * sizeof(char*));
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -441,6 +476,33 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+
+  //Save string to the stack
+  int i;
+  for (i=0; i<argc; i++) {
+      *esp -= strlen(tmp[argc-1-i]) + 1; 
+      arg_addr[argc-1-i] = *esp;
+      strlcpy(*esp, tmp[argc-1-i], strlen(tmp[argc-1-i]));
+  }
+  //word align + argv[argc]
+  *esp -= (int)(*esp)%4 + 4;
+  *(int*)(*esp) = 0;
+  *esp -= 4;
+
+  //save pointer to argv & argc
+  for (i=0; i<argc; i++) {
+     *(char**)(*esp) = arg_addr[argc-1-i];
+     *esp -= 4;
+  }
+  *(char*)(*esp) = *esp + 4;
+  *esp -= 4;
+  *(int*)(*esp) = argc;
+  *esp -= 4;
+  *(int*)(*esp) = 0; //return address
+  free(arg_addr);
+  //Save 
+
+
   return success;
 }
 
