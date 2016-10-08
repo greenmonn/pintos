@@ -65,8 +65,8 @@ start_process (void *f_name)
   success = load (f_name, &if_.eip, &if_.esp);
   
   char buf[48];
-  hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   
+  //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
@@ -217,7 +217,7 @@ int calc_argc (char* string);
    Returns true if successful, false otherwise. */
 
 int calc_argc(char* string) {
-    char* save_ptr, token;
+    char* save_ptr, *token;
     int count = 0;
     int slength = strlen(string)+1;
     char* tmpstring = (char*)malloc(slength*sizeof(char));
@@ -342,10 +342,10 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   if (!setup_stack (esp, fn_copy))
     goto done;
   
-  char buf[48];
-  hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   
-  /* Start address. */
+  hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+  
+  /* Start address */
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
@@ -464,10 +464,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-/* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
-static bool
-setup_stack (void **esp, char *f_name) 
+/* Create a minimal stack by mapping a zeroed page at the top of */
+static bool setup_stack (void **esp, char *f_name) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -482,7 +480,7 @@ setup_stack (void **esp, char *f_name)
     }
 
   /* filename parse */
-  char* fn_copy = malloc((strlen(f_name)+1) * sizeof(char));
+  char* fn_copy = palloc_get_page(PAL_USER);
   //char** tmp = (PAL_USER);
   if (fn_copy == NULL)
       thread_exit();
@@ -494,7 +492,7 @@ setup_stack (void **esp, char *f_name)
   int i = 0;
   char** arg_addr = (char**)malloc(argc * sizeof(char*));
 
-  char* save_ptr, token;
+  char* save_ptr, *token;
 
   //printf("%s\n", strtok_r(fn_copy, " ", &save_ptr));
   /*for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
@@ -504,25 +502,42 @@ setup_stack (void **esp, char *f_name)
       index++;
   }*/
   printf("before strtok : %s\n", fn_copy);
-
+  
   //Save string to the stack
+  //strtok_r(fn_copy, " ", &save_ptr);
   for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
           token = strtok_r (NULL, " ", &save_ptr)) {
       *esp -= strlen(token) + 1; 
-      //printf("string to the stack : %s\n", token);
+      printf("%x\n", *esp);
+     // printf("%s\n", token);
+     // printf("%x\n", token);
       arg_addr[argc-1-i] = (char*)*esp;
       i++;
-      strlcpy((char*)*esp, token, strlen(token));
+      //strlcpy(*esp, token, strlen(token)+1);
+      int idx = 0;
+      for (idx = 0; idx < strlen(token) + 1; idx++) {
+          *((char*)(*esp + idx)) = token[idx];
+      }
+    
+      //printf("%s\n", (char*)(*esp));
+      //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+
+
   }
+  printf("%d\n", i);
   printf("after strtok : %s\n", fn_copy);
+  
+  hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
   //word align + argv[argc]
-  *esp -= (int)(*esp)%4 + 4;
+  *esp -= (size_t)(*esp)%4 + 4;
+  printf("%x\n", *esp);
   *(int*)(*esp) = 0;
   *esp -= 4;
-
+  
+  hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
   //save pointer to argv & argc
   for (i=0; i<argc; i++) {
-     *(char**)(*esp) = arg_addr[argc-1-i];
+     *(char**)(*esp) = arg_addr[i];
      *esp -= 4;
   }
   *(char**)(*esp) = *esp + 4;
@@ -532,7 +547,7 @@ setup_stack (void **esp, char *f_name)
   *(int*)(*esp) = 0; //return address
   free(arg_addr);
 
-  free(fn_copy);
+  //free(fn_copy);
   //Save 
 
 
