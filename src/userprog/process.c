@@ -245,7 +245,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   int i;
   char* save_ptr;
   char* prog_name = (char*)malloc(strlen(fn_copy));
-  strlcpy(prog_name, fn_copy, strlen(fn_copy));
+  strlcpy(prog_name, fn_copy, strlen(fn_copy)+1);
   strtok_r(prog_name, " ", &save_ptr);
   strtok_r(NULL, " ", &save_ptr);
 
