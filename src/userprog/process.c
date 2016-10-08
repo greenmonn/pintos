@@ -19,7 +19,7 @@
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -59,8 +59,14 @@ start_process (void *f_name)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  
 
+
+  success = load (f_name, &if_.eip, &if_.esp);
+  
+  char buf[48];
+  hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
+  
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
@@ -198,11 +204,12 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, int argc, char **tmp);
+static bool setup_stack (void **esp, char *f_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
+int calc_argc (char* string);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -212,22 +219,23 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 int calc_argc(char* string) {
     char* save_ptr, token;
     int count = 0;
-    int slength = strlen(string);
+    int slength = strlen(string)+1;
     char* tmpstring = (char*)malloc(slength*sizeof(char));
     strlcpy(tmpstring, string, slength);
-
     for (token = strtok_r(tmpstring, " ", &save_ptr); token != NULL ; 
             token = strtok_r(NULL, " ", &save_ptr)) {
         count++;
+        printf("token1 : %d\n",count);
     }
     free(tmpstring);
+    printf("argc : %d\n", count);
     return count;
 }
 
     
 
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *fn_copy,  void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -235,29 +243,26 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+  char* save_ptr;
+  char* prog_name = (char*)malloc(strlen(fn_copy));
+  strlcpy(prog_name, fn_copy, strlen(fn_copy));
+  strtok_r(prog_name, " ", &save_ptr);
+  strtok_r(NULL, " ", &save_ptr);
 
+  printf("load fn_copy : %s\n", fn_copy);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
-  /* filename parse */
-  int argc = calc_argc(file_name);
-  char* tmp = (char*)malloc(argc * sizeof(char*));
-  char* save_ptr, token;
-  int index = 0;
-  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
-          token = strtok_r (NULL, " ", &save_ptr)) {
-      tmp[index] = token;
-      index++;
-  }
-
+  
+  printf("program : %s\n", prog_name);
+  
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (prog_name);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", prog_name);
       goto done; 
     }
 
@@ -270,7 +275,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n", prog_name);
       goto done; 
     }
 
@@ -334,11 +339,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, argc, tmp))
+  if (!setup_stack (esp, fn_copy))
     goto done;
-  free(tmp);
-  char buf[150];
-  hex_dump(PHYS_BASE-100, (void*)buf, 150, true); 
+  
+  char buf[48];
+  hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
+  
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -461,12 +467,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, int argc, char **tmp) 
+setup_stack (void **esp, char *f_name) 
 {
   uint8_t *kpage;
   bool success = false;
-  char** arg_addr = (char**)malloc(argc * sizeof(char*));
-
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -477,13 +481,40 @@ setup_stack (void **esp, int argc, char **tmp)
         palloc_free_page (kpage);
     }
 
+  /* filename parse */
+  char* fn_copy = malloc((strlen(f_name)+1) * sizeof(char));
+  //char** tmp = (PAL_USER);
+  if (fn_copy == NULL)
+      thread_exit();
+  strlcpy(fn_copy, f_name, PGSIZE);
+  printf("fn_copy : %s\n", fn_copy);
+  printf("fn_copy addr : %x\n", fn_copy);
+  printf("file_name addr : %x\n", f_name);
+  int argc = calc_argc(fn_copy);
+  int i = 0;
+  char** arg_addr = (char**)malloc(argc * sizeof(char*));
+
+  char* save_ptr, token;
+
+  //printf("%s\n", strtok_r(fn_copy, " ", &save_ptr));
+  /*for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
+          token = strtok_r (NULL, " ", &save_ptr)) {
+      strlcpy(tmp[index], token, strlen(token));
+      printf("strtok : %d\n", index);
+      index++;
+  }*/
+  printf("before strtok : %s\n", fn_copy);
+
   //Save string to the stack
-  int i;
-  for (i=0; i<argc; i++) {
-      *esp -= strlen(tmp[argc-1-i]) + 1; 
-      arg_addr[argc-1-i] = *esp;
-      strlcpy(*esp, tmp[argc-1-i], strlen(tmp[argc-1-i]));
+  for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
+          token = strtok_r (NULL, " ", &save_ptr)) {
+      *esp -= strlen(token) + 1; 
+      //printf("string to the stack : %s\n", token);
+      arg_addr[argc-1-i] = (char*)*esp;
+      i++;
+      strlcpy((char*)*esp, token, strlen(token));
   }
+  printf("after strtok : %s\n", fn_copy);
   //word align + argv[argc]
   *esp -= (int)(*esp)%4 + 4;
   *(int*)(*esp) = 0;
@@ -494,12 +525,14 @@ setup_stack (void **esp, int argc, char **tmp)
      *(char**)(*esp) = arg_addr[argc-1-i];
      *esp -= 4;
   }
-  *(char*)(*esp) = *esp + 4;
+  *(char**)(*esp) = *esp + 4;
   *esp -= 4;
   *(int*)(*esp) = argc;
   *esp -= 4;
   *(int*)(*esp) = 0; //return address
   free(arg_addr);
+
+  free(fn_copy);
   //Save 
 
 
