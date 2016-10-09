@@ -12,7 +12,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #ifdef USERPROG
-#include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -162,6 +162,13 @@ thread_print_stats (void)
           idle_ticks, kernel_ticks, user_ticks);
 }
 
+void
+init_process (struct process* proc, int pid) {
+    proc = malloc(sizeof(struct process));
+    proc->pid = pid;
+    proc->exit = 0;
+    proc->status = 0;
+}
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
    and adds it to the ready queue.  Returns the thread identifier
@@ -197,6 +204,14 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  /* Making new thread as a child of current */
+  struct process* proc;
+  init_process (proc, tid);
+  t->proc = proc;
+
+  list_push_back(&thread_current()->child_list, &proc->elem);
+  
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -471,6 +486,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_pri = priority; //not donated
   t->magic = THREAD_MAGIC;
   list_init(&t->acquired_lock_list);
+  list_init(&t->file_list);
+  list_init(&t->child_list);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

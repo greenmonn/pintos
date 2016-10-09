@@ -96,6 +96,10 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
+    struct list file_list;
+    struct list child_list;
+    struct process *proc;    //process information block (parent, child..)
+    //struct process *parent;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

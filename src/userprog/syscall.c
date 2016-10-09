@@ -5,6 +5,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define ARG_MAX 3
+
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -12,77 +14,150 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
+bool
+userptr_valid(char* ptr) {
+    int flag = 1;
+    if (!ptr || !pagedir_get_page(thread_current()->pagedir, ptr) || !is_user_vaddr(ptr))
+        flag = 0;
 
+    return flag;
+}
+
+bool
+userbuf_valid(char* ptr, int bufsize) {
+    int flag = 1;
+    int i;
+    for(i=0; i<bufsize; i++) {
+        if (!userptr_valid(ptr+i)) {
+            flag = 0;
+            break;
+        }
+    }
+    return flag;
+}
+    
+        
+ 
+void get_arg(struct intr_frame *f, char** arg, int n) {
+    char* curptr = f->esp + sizeof(int);
+    int i;
+    for (i=0; i<n; i++) {
+        if (!userptr_valid(curptr)) {
+            thread_exit();
+        }
+        arg[i] = *(char**)(curptr);
+        curptr += sizeof(char*);
+    }
+}
+
+  
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  printf ("system call!\n");
-  printf("intr_num: %x\n",f->vec_no);
-  if (!pagedir_get_page(thread_current()->pagedir,(const void*)f->esp) || !(f->esp)) {
-  	thread_exit();
+  char* arg[ARG_MAX];
+  int retval;
+
+ // printf ("system call!\n");
+  //printf("intr_num: %x\n",f->vec_no);
+  if (!userptr_valid(f->esp)) {
+      thread_exit();
   }
 
-  if (!is_user_vaddr(f->esp)) {
-  	thread_exit();
-  }
-  printf("syscall : %d\n",*(int *)(f->esp));
+  //printf("syscall : %d\n",*(int *)(f->esp));
   switch (*(int*)(f->esp)) 
   {
     case SYS_HALT: 
 	{
-	  
+	    break;  
 	}
     case SYS_EXIT:
 	{
-	  exit(1);
+        get_arg(f,arg, 1);
+	    exit((int)arg[0]);
+        break;
 	}
 	case SYS_EXEC:
 	{
-	  
+
+        break;
 	}
     case SYS_WAIT:
 	{
-	  
+	    get_arg(f, arg, 1);
+        f->eax = wait((int)arg[0]);
+        break;
 	}
 	case SYS_CREATE:
 	{
 	  
+        break;
 	}
 	case SYS_REMOVE:
 	{
 	  
+        break;
 	}
 	case SYS_OPEN:
 	{
 	  
+        break;
 	}
 	case SYS_FILESIZE:
 	{
 	  
+        break;
 	}
 	case SYS_READ:
 	{
 	  
+        break;
 	}
 	case SYS_WRITE:
 	{
-	  
+	  get_arg(f, arg, 3);
+      f->eax = write((int)arg[0],(const void*) arg[1],(unsigned) arg[2]);
+      break;
 	}
 	case SYS_SEEK:
 	{
 	  
+        break;
 	}
 	case SYS_TELL:
 	{
 	  
+        break;
 	}
 	case SYS_CLOSE:
 	{
 	  
+        break;
 	}
   }
 }
 
-void exit(int i) {
+void exit(int status) {
+    thread_current()->proc->exit = 1;
 	thread_exit();
 }
+
+int wait(int pid) {
+    int status;
+    status = process_wait(pid);
+    return status;
+}
+    
+int write(int fd, const void *buffer, unsigned size)
+{
+    if (fd == STDOUT_FILENO) {
+        if (!userbuf_valid(buffer, size)) {
+            return -1;
+        }
+        char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
+        putbuf((const char*) kerbuf, size);
+        return size;
+    }
+    
+}
+
+

@@ -17,7 +17,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
+#include "threads/synch.h"
+#include "userprog/syscall.h"
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
@@ -64,7 +65,6 @@ start_process (void *f_name)
 
   success = load (f_name, &if_.eip, &if_.esp);
   
-  char buf[48];
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   /* If load failed, quit. */
@@ -93,10 +93,37 @@ start_process (void *f_name)
    does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) 
-{
-    while(1) {
+
+{ 
+    int status = -1;
+    struct list_elem *e;
+    struct process *waiting_child;
+    for (e = list_begin(&thread_current()->child_list) ; e != list_end(&thread_current()->child_list); e = list_next(e)) {
+        struct process *proc = list_entry(e, struct process, elem);
+        if (proc->pid == child_tid) {
+            waiting_child = proc;
+            printf("waiting %d child\n", proc->pid);
+            break;
+        }
     }
-    ;
+
+    if ( e == list_end(&thread_current()->child_list)) {
+        return status;
+    }
+    printf("status : %d\n", status);
+
+    while(!waiting_child->exit) {
+        barrier();
+        
+    }
+    status = waiting_child->status;
+    list_remove(&waiting_child->elem);
+    free(waiting_child);
+    return status;
+
+   /* while (1) {
+    }
+    ;*/
   return -1;
 }
 
@@ -225,10 +252,10 @@ int calc_argc(char* string) {
     for (token = strtok_r(tmpstring, " ", &save_ptr); token != NULL ; 
             token = strtok_r(NULL, " ", &save_ptr)) {
         count++;
-        printf("token1 : %d\n",count);
+        //printf("token1 : %d\n",count);
     }
     free(tmpstring);
-    printf("argc : %d\n", count);
+    //printf("argc : %d\n", count);
     return count;
 }
 
@@ -249,14 +276,18 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   strtok_r(prog_name, " ", &save_ptr);
   strtok_r(NULL, " ", &save_ptr);
 
-  printf("load fn_copy : %s\n", fn_copy);
+  //printf("load fn_copy : %s\n", fn_copy);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
+  
+  list_init(&t->file_list);
+
   if (t->pagedir == NULL) 
     goto done;
+
   process_activate ();
   
-  printf("program : %s\n", prog_name);
+  //printf("program : %s\n", prog_name);
   
   /* Open executable file. */
   file = filesys_open (prog_name);
@@ -343,7 +374,8 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
     goto done;
   
   
-  hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+  //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+
   
   /* Start address */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -485,9 +517,9 @@ static bool setup_stack (void **esp, char *f_name)
   if (fn_copy == NULL)
       thread_exit();
   strlcpy(fn_copy, f_name, PGSIZE);
-  printf("fn_copy : %s\n", fn_copy);
-  printf("fn_copy addr : %x\n", fn_copy);
-  printf("file_name addr : %x\n", f_name);
+  //printf("fn_copy : %s\n", fn_copy);
+  //printf("fn_copy addr : %x\n", fn_copy);
+  //printf("file_name addr : %x\n", f_name);
   int argc = calc_argc(fn_copy);
   int i = 0;
   char** arg_addr = (char**)malloc(argc * sizeof(char*));
@@ -501,14 +533,14 @@ static bool setup_stack (void **esp, char *f_name)
       printf("strtok : %d\n", index);
       index++;
   }*/
-  printf("before strtok : %s\n", fn_copy);
+  //printf("before strtok : %s\n", fn_copy);
   
   //Save string to the stack
   //strtok_r(fn_copy, " ", &save_ptr);
   for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
           token = strtok_r (NULL, " ", &save_ptr)) {
       *esp -= strlen(token) + 1; 
-      printf("%x\n", *esp);
+      //printf("%x\n", *esp);
      // printf("%s\n", token);
      // printf("%x\n", token);
       arg_addr[argc-1-i] = (char*)*esp;
@@ -524,17 +556,17 @@ static bool setup_stack (void **esp, char *f_name)
 
 
   }
-  printf("%d\n", i);
-  printf("after strtok : %s\n", fn_copy);
+  //printf("%d\n", i);
+  //printf("after strtok : %s\n", fn_copy);
   
-  hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+  //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
   //word align + argv[argc]
   *esp -= (size_t)(*esp)%4 + 4;
-  printf("%x\n", *esp);
+  //printf("%x\n", *esp);
   *(int*)(*esp) = 0;
   *esp -= 4;
   
-  hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+  //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
   //save pointer to argv & argc
   for (i=0; i<argc; i++) {
      *(char**)(*esp) = arg_addr[i];
