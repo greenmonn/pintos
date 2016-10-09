@@ -5,7 +5,7 @@
 
 struct process {
     int exit;
-    int pid;
+    tid_t pid;
     int status;
     struct list_elem elem;
 };

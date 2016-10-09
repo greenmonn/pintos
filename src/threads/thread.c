@@ -163,10 +163,9 @@ thread_print_stats (void)
 }
 
 void
-init_process (struct process* proc, int pid) {
-    proc = malloc(sizeof(struct process));
-    proc->pid = pid;
-    proc->exit = 0;
+init_process (struct process* proc, tid_t pid) {
+	proc->pid = pid;
+	proc->exit = 0;
     proc->status = 0;
 }
 /* Creates a new kernel thread named NAME with the given initial
@@ -204,14 +203,15 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
+  char * idle= "idle";
+  if (strcmp(name, idle)) {
   /* Making new thread as a child of current */
   struct process* proc;
+  proc = malloc(sizeof(struct process));
   init_process (proc, tid);
   t->proc = proc;
-
   list_push_back(&thread_current()->child_list, &proc->elem);
-  
+  }
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);

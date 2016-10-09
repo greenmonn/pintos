@@ -14,10 +14,11 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
+
 bool
 userptr_valid(char* ptr) {
     int flag = 1;
-    if (!ptr || !pagedir_get_page(thread_current()->pagedir, ptr) || !is_user_vaddr(ptr))
+    if (!ptr || !is_user_vaddr(ptr) || !pagedir_get_page(thread_current()->pagedir, ptr))
         flag = 0;
 
     return flag;
@@ -43,7 +44,7 @@ void get_arg(struct intr_frame *f, char** arg, int n) {
     int i;
     for (i=0; i<n; i++) {
         if (!userptr_valid(curptr)) {
-            thread_exit();
+            exit(-1);
         }
         arg[i] = *(char**)(curptr);
         curptr += sizeof(char*);
@@ -57,13 +58,10 @@ syscall_handler (struct intr_frame *f)
   char* arg[ARG_MAX];
   int retval;
 
- // printf ("system call!\n");
-  //printf("intr_num: %x\n",f->vec_no);
   if (!userptr_valid(f->esp)) {
-      thread_exit();
+      exit(-1);
   }
 
-  //printf("syscall : %d\n",*(int *)(f->esp));
   switch (*(int*)(f->esp)) 
   {
     case SYS_HALT: 
@@ -83,7 +81,8 @@ syscall_handler (struct intr_frame *f)
 	}
     case SYS_WAIT:
 	{
-	    get_arg(f, arg, 1);
+	    printf("SYS_WAIT");
+		get_arg(f, arg, 1);
         f->eax = wait((int)arg[0]);
         break;
 	}
@@ -138,12 +137,13 @@ syscall_handler (struct intr_frame *f)
 
 void exit(int status) {
     thread_current()->proc->exit = 1;
-	thread_exit();
+	thread_current()->proc->status = status;
+	thread_exit(); 
 }
 
 int wait(int pid) {
     int status;
-    status = process_wait(pid);
+	status = process_wait(pid);
     return status;
 }
     
@@ -151,7 +151,7 @@ int write(int fd, const void *buffer, unsigned size)
 {
     if (fd == STDOUT_FILENO) {
         if (!userbuf_valid(buffer, size)) {
-            return -1;
+            exit(-1);
         }
         char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
         putbuf((const char*) kerbuf, size);
@@ -159,5 +159,3 @@ int write(int fd, const void *buffer, unsigned size)
     }
     
 }
-
-
