@@ -108,19 +108,21 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_FILESIZE:
 	{
-	  
+	    get_arg(f, arg, 1);
+        f->eax = filesize((int)arg[0]);
         break;
 	}
 	case SYS_READ:
 	{
-	  
+	    get_arg(f, arg, 3);
+        f->eax = read((int)arg[0], (void*)arg[1], (unsigned)arg[2]);
         break;
 	}
 	case SYS_WRITE:
 	{
-	  get_arg(f, arg, 3);
-      f->eax = write((int)arg[0],(const void*) arg[1],(unsigned) arg[2]);
-      break;
+	    get_arg(f, arg, 3);
+        f->eax = write((int)arg[0],(const void*) arg[1],(unsigned) arg[2]);
+        break;
 	}
 	case SYS_SEEK:
 	{
@@ -194,15 +196,68 @@ int wait(int pid) {
     return status;
 }
     
+struct file *find_file_desc(int fd) {
+    struct list_elem *e;
+    struct file_elem *fe;
+    struct file *target;
+    for (e = list_begin(&thread_current()->proc->file_list); e != list_end(&thread_current()->proc->file_list); e = list_next(e)) {
+        fe = list_entry(e, struct file_elem, elem);
+        if (fe->fd == fd) {
+            return fe->name;
+        }
+    }
+    return NULL;
+}
+
+
 int write(int fd, const void *buffer, unsigned size)
 {
+    if (!userbuf_valid(buffer, size)) {
+        exit(-1);
+    }
+    char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
+
     if (fd == STDOUT_FILENO) {
-        if (!userbuf_valid(buffer, size)) {
-            exit(-1);
-        }
-        char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
         putbuf((const char*) kerbuf, size);
         return size;
     }
+
+    //write to file
+    struct file *file_to_write = find_file_desc(fd);
+   
+    if (file_to_write) {
+        return file_write(file_to_write, (const void*)kerbuf, size);
+    }
+    return 0;
+
+}
+
+int read(int fd, void *buffer, unsigned size)
+{
+    if(!userbuf_valid(buffer, size)) {
+        exit(-1);
+    }
+    char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
+
+    if (fd == STDIN_FILENO) {
+        int index = 0;
+        for (index = 0 ; index < size ; index++) {
+            kerbuf[index] = input_getc();
+        }
+        return index;
+    }
+
+    //read from file
+    struct file *file_to_read = find_file_desc(fd);
     
+    if(file_to_read) {
+        return file_read(file_to_read, (void*)kerbuf, (int)size);
+        }
+
+    return -1;
+}
+
+int filesize(int fd) {
+    struct file *target = find_file_desc(fd);
+    return file_length(target);
 }
