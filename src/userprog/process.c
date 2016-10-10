@@ -154,6 +154,17 @@ process_wait (tid_t child_tid UNUSED)
         barrier();
     }
     status = waiting_child->status;
+
+    /* FREE RESOURCES */
+
+    struct file_elem *fe;
+    // FILE_LIST
+    while(!list_empty(&waiting_child->file_list)) {
+        e = list_pop_front(&waiting_child->file_list);
+        fe = list_entry(e, struct file_elem, elem);
+        free(fe);
+    }
+
     list_remove(&waiting_child->elem);
     free(waiting_child);
     return status;
@@ -315,7 +326,6 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   
-  list_init(&t->file_list);
 
   if (t->pagedir == NULL) 
     goto done;

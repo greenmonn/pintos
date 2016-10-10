@@ -169,6 +169,8 @@ init_process (struct process* proc, tid_t pid) {
     proc->status = 0;
 	proc->load = 0;
     proc->waited = false;
+    proc->fd_num = 2;
+    list_init(&proc->file_list);
 }
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
@@ -488,7 +490,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_pri = priority; //not donated
   t->magic = THREAD_MAGIC;
   list_init(&t->acquired_lock_list);
-  list_init(&t->file_list);
   list_init(&t->child_list);
 }
 

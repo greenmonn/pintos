@@ -91,7 +91,8 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_CREATE:
 	{
-	  
+        get_arg(f, arg, 2);
+        f->eax = create((const char*)arg[0], (unsigned)arg[1]);
         break;
 	}
 	case SYS_REMOVE:
@@ -101,7 +102,8 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_OPEN:
 	{
-	  
+        get_arg(f, arg, 1);
+        f->eax = open((const char*)arg[0]);
         break;
 	}
 	case SYS_FILESIZE:
@@ -138,6 +140,41 @@ syscall_handler (struct intr_frame *f)
   }
 }
 
+/* CREATE : limitations 
+ * No internal synchronization (only one process at a time is executing file system code
+ * File size if fixed at creation time
+ * File data is allocated as a single extent
+ * no subdirectories(only root?)
+ * file name limit 14 characters
+ * no file system repair tool
+ */
+int create(const char *name, unsigned size) {
+    if (!userptr_valid(name))
+        exit(-1);
+    if (strlen(name) > 14) {
+        return 0;
+    }
+    return filesys_create(name, size);
+}
+
+int open(const char *name) {
+    if (!userptr_valid(name))
+        exit(-1);
+   char* kername = pagedir_get_page(thread_current()->pagedir, name);
+   int fd;
+   //printf("%s\n", name);
+   struct file* openfile = filesys_open((const char*)kername);
+   //printf("%x\n", openfile);
+   if (!openfile) {
+       return -1;
+   }
+   struct list *file_list = &thread_current()->proc->file_list;
+   struct file_elem *fe = malloc(sizeof(struct file_elem));
+   fe->name = openfile;
+   fd = fe->fd = thread_current()->proc->fd_num++;
+   list_push_back(file_list, &fe->elem);
+   return fd;
+}
 void exit(int status) {
     thread_current()->proc->exit = 1;
 	thread_current()->proc->status = status;
