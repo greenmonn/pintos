@@ -165,9 +165,10 @@ thread_print_stats (void)
 void
 init_process (struct process* proc, tid_t pid) {
 	proc->pid = pid;
-	proc->exit = 0;
+    proc->exit = 0;
     proc->status = 0;
 	proc->load = 0;
+    proc->waited = false;
 }
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,

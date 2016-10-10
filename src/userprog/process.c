@@ -142,7 +142,13 @@ process_wait (tid_t child_tid UNUSED)
 
     if ( e == list_end(&thread_current()->child_list)) {
 		return status;
-    }
+    }   // FAIL case 1 : pid does not refer to a direct child of the calling process.
+
+    if (waiting_child->waited) {
+        return status;
+    }   // FAIL case 2 : the process that calls wait has already called wait on pid.
+    
+    waiting_child->waited = true;
 
     while(!waiting_child->exit) {
         barrier();

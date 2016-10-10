@@ -9,6 +9,7 @@ struct process {
     int status;
     struct list_elem elem;
 	int load;
+    bool waited;
 };
 
 void syscall_init (void);
