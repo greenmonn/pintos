@@ -8,6 +8,7 @@ struct process {
     tid_t pid;
     int status;
     struct list_elem elem;
+	int load;
 };
 
 void syscall_init (void);

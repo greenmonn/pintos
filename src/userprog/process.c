@@ -22,6 +22,20 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
+int check_child_load () {
+	struct list* child_list = &thread_current()->child_list;
+	struct list_elem* e;
+	for (e = list_begin(child_list); e != list_end(child_list); e = list_next(e)) {
+		struct process* proc = list_entry(e,struct process, elem);
+		if (proc->load == 0) {
+			return 0;
+		} else if (proc->load == 2) {
+			return 2;
+		}
+	}
+	return 1;
+} 
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -45,8 +59,18 @@ process_execute (const char *file_name)
  
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (fn_copy2, PRI_DEFAULT, start_process, fn_copy);
+  int check;
+  while ((check = check_child_load()) == 0) {
+  	barrier();
+  }
+
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  
+  if (check == 2) {
+  	tid = -1;
+  } 
   return tid;
 }
 
@@ -69,12 +93,17 @@ start_process (void *f_name)
 
   success = load (f_name, &if_.eip, &if_.esp);
   
+  if (success) {
+  	thread_current()->proc->load = 1;
+  }
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  if (!success) {
+	  thread_current()->proc->load = 2;
+	  thread_exit ();
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -151,7 +180,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  printf("%s: exit(%d)\n",thread_current()->name,thread_current()->proc->status);
 }
 
 /* Sets up the CPU for running user code in the current

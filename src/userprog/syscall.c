@@ -44,7 +44,7 @@ void get_arg(struct intr_frame *f, char** arg, int n) {
     int i;
     for (i=0; i<n; i++) {
         if (!userptr_valid(curptr)) {
-            exit(-1);
+			exit(-1);
         }
         arg[i] = *(char**)(curptr);
         curptr += sizeof(char*);
@@ -76,12 +76,12 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_EXEC:
 	{
-
+		get_arg(f, arg, 1); 
+		f->eax = exec((const char* )arg[0]);
         break;
 	}
     case SYS_WAIT:
 	{
-	    printf("SYS_WAIT");
 		get_arg(f, arg, 1);
         f->eax = wait((int)arg[0]);
         break;
@@ -138,7 +138,13 @@ syscall_handler (struct intr_frame *f)
 void exit(int status) {
     thread_current()->proc->exit = 1;
 	thread_current()->proc->status = status;
+	printf("%s: exit(%d)\n", thread_current()->name,status);
 	thread_exit(); 
+}
+
+int exec(const char *cmd_line) {
+	int pid = process_execute(cmd_line);
+	return pid;
 }
 
 int wait(int pid) {
