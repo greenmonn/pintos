@@ -77,7 +77,10 @@ syscall_handler (struct intr_frame *f)
 	case SYS_EXEC:
 	{
 		get_arg(f, arg, 1); 
-		f->eax = exec((const char* )arg[0]);
+		if (!userptr_valid(arg[0])) {
+            exit(-1);
+        }
+        f->eax = exec((const char* )arg[0]);
         break;
 	}
     case SYS_WAIT:
@@ -138,12 +141,13 @@ syscall_handler (struct intr_frame *f)
 void exit(int status) {
     thread_current()->proc->exit = 1;
 	thread_current()->proc->status = status;
-	printf("%s: exit(%d)\n", thread_current()->name,status);
+//	printf("%s: exit(%d)\n", thread_current()->name,status);
 	thread_exit(); 
 }
 
 int exec(const char *cmd_line) {
-	int pid = process_execute(cmd_line);
+	char *kerbuf = pagedir_get_page(thread_current()->pagedir, cmd_line);
+    int pid = process_execute(kerbuf);
 	return pid;
 }
 

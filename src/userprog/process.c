@@ -102,6 +102,7 @@ start_process (void *f_name)
   palloc_free_page (file_name);
   if (!success) {
 	  thread_current()->proc->load = 2;
+      thread_current()->proc->status = -1;
 	  thread_exit ();
   }
 
@@ -180,6 +181,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc->status);
 }
 
 /* Sets up the CPU for running user code in the current
