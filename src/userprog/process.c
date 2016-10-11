@@ -317,12 +317,17 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+  //char* save_ptr;
+  //char* prog_name = (char*)malloc(strlen(fn_copy));
+  //strlcpy(prog_name, fn_copy, strlen(fn_copy)+1);
+  //strtok_r(prog_name, " ", &save_ptr);
+  //strtok_r(NULL, " ", &save_ptr);
+  
   char* save_ptr;
-  char* prog_name = (char*)malloc(strlen(fn_copy));
-  strlcpy(prog_name, fn_copy, strlen(fn_copy)+1);
-  strtok_r(prog_name, " ", &save_ptr);
-  strtok_r(NULL, " ", &save_ptr);
-
+  char* prog_name = palloc_get_page(PAL_USER);
+  strlcpy(prog_name,fn_copy, strlen(fn_copy)+1);
+  strtok_r(prog_name," ",&save_ptr);
+  strtok_r(NULL," ", &save_ptr);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   
@@ -331,7 +336,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
     goto done;
 
   process_activate ();
-  
+
   /* Open executable file. */
   file = filesys_open (prog_name);
   if (file == NULL) 
@@ -352,6 +357,8 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", prog_name);
       goto done; 
     }
+  
+    palloc_free_page(prog_name);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
