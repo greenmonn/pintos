@@ -66,6 +66,7 @@ syscall_handler (struct intr_frame *f)
   {
     case SYS_HALT: 
 	{
+        power_off();
 	    break;  
 	}
     case SYS_EXIT:
@@ -97,7 +98,8 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_REMOVE:
 	{
-	  
+        get_arg(f, arg, 1);
+        f->eax = remove((const char*)arg[0]);
         break;
 	}
 	case SYS_OPEN:
@@ -126,12 +128,14 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_SEEK:
 	{
-	  
+        get_arg(f, arg, 2);
+        seek((int)arg[0], (unsigned)arg[1]);
         break;
 	}
 	case SYS_TELL:
 	{
-	  
+        get_arg(f, arg, 1);
+        f->eax = tell((int)arg[0]);
         break;
 	}
 	case SYS_CLOSE:
@@ -159,6 +163,13 @@ int create(const char *name, unsigned size) {
     return filesys_create(name, size);
 }
 
+int remove(const char *file) {
+    if (!userptr_valid(file))
+        exit(-1);
+    return filesys_remove(file);
+}
+
+
 int open(const char *name) {
     if (!userptr_valid(name))
         exit(-1);
@@ -177,6 +188,24 @@ int open(const char *name) {
    list_push_back(file_list, &fe->elem);
    return fd;
 }
+
+void close(int fd) {
+
+    struct list *file_list = &thread_current()->proc->file_list;
+    struct list_elem *e;
+    struct file_elem *fe;
+    
+    for (e = list_begin(file_list); e != list_end(file_list); e = list_next(e)) {
+        fe = list_entry(e, struct file_elem, elem);
+        if (fe->fd == fd) {
+            e = list_next(e);
+            list_remove(list_prev(e));
+            e = list_prev(e);
+            break;
+        }
+    }
+}
+
 void exit(int status) {
     thread_current()->proc->exit = 1;
 	thread_current()->proc->status = status;
@@ -261,3 +290,20 @@ int filesize(int fd) {
     struct file *target = find_file_desc(fd);
     return file_length(target);
 }
+
+void seek(int fd, unsigned position) {
+    struct file *file_to_seek = find_file_desc(fd);
+
+    if(!file_to_seek)
+        exit(-1);
+    file_seek(file_to_seek, position);
+}
+
+int tell(int fd) {
+    struct file *file_to_tell = find_file_desc(fd);
+
+    if(!file_to_tell)
+        exit(-1);
+    return (unsigned)file_tell(file_to_tell);
+}
+
