@@ -28,8 +28,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-/* ADDED : List of processes in THREAD_BLOCK state */
-//static struct list sleep_list;
+/* ADDED : File System Using Lock */
+static struct lock filesys_lock;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -107,6 +107,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  lock_init (&filesys_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -489,6 +490,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->acquiring_lock = NULL;  
   t->original_pri = priority; //not donated
   t->magic = THREAD_MAGIC;
+  t->filesys_lock = &filesys_lock;
   list_init(&t->acquired_lock_list);
   list_init(&t->child_list);
 }

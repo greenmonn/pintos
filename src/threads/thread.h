@@ -98,6 +98,7 @@ struct thread
 #endif
     struct list child_list;
     struct process *proc;    //process information block (parent, child..)
+    struct lock *filesys_lock;
     //struct process *parent;
 
     /* Owned by thread.c. */

@@ -160,13 +160,19 @@ int create(const char *name, unsigned size) {
     if (strlen(name) > 14) {
         return 0;
     }
-    return filesys_create(name, size);
+    lock_acquire(thread_current()->filesys_lock);
+    int ret = filesys_create(name, size);
+    lock_release(thread_current()->filesys_lock);
+    return ret;
 }
 
 int remove(const char *file) {
     if (!userptr_valid(file))
         exit(-1);
-    return filesys_remove(file);
+    lock_acquire(thread_current()->filesys_lock);
+    int ret = filesys_remove(file);
+    lock_release(thread_current()->filesys_lock);
+    return ret;
 }
 
 
@@ -176,7 +182,9 @@ int open(const char *name) {
    char* kername = pagedir_get_page(thread_current()->pagedir, name);
    int fd;
    //printf("%s\n", name);
+   lock_acquire(thread_current()->filesys_lock);
    struct file* openfile = filesys_open((const char*)kername);
+   lock_release(thread_current()->filesys_lock);
    //printf("%x\n", openfile);
    if (!openfile) {
        return -1;
@@ -185,6 +193,7 @@ int open(const char *name) {
    struct file_elem *fe = malloc(sizeof(struct file_elem));
    fe->name = openfile;
    fd = fe->fd = thread_current()->proc->fd_num++;
+   strlcpy(fe->filename, kername, strlen(kername)+1);
    list_push_back(file_list, &fe->elem);
    return fd;
 }
@@ -237,6 +246,19 @@ struct file *find_file_desc(int fd) {
     }
     return NULL;
 }
+char *find_file_name(int fd) {
+    struct list_elem *e;
+    struct file_elem *fe;
+    struct file *target;
+    for (e = list_begin(&thread_current()->proc->file_list); e != list_end(&thread_current()->proc->file_list); e = list_next(e)) {
+        fe = list_entry(e, struct file_elem, elem);
+        if (fe->fd == fd) {
+            return fe->filename;
+        }
+    }
+    return NULL;
+}
+
 
 
 int write(int fd, const void *buffer, unsigned size)
@@ -245,7 +267,6 @@ int write(int fd, const void *buffer, unsigned size)
         exit(-1);
     }
     char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
-
     if (fd == STDOUT_FILENO) {
         putbuf((const char*) kerbuf, size);
         return size;
@@ -253,9 +274,18 @@ int write(int fd, const void *buffer, unsigned size)
 
     //write to file
     struct file *file_to_write = find_file_desc(fd);
-   
+    char* filename = find_file_name(fd);
+
+    //Cannot write executing code (for rox tests)
+    if (filename != NULL && !strcmp(filename, thread_current()->name)) {
+        return 0;
+    }
+
     if (file_to_write) {
-        return file_write(file_to_write, (const void*)kerbuf, size);
+        lock_acquire(thread_current()->filesys_lock);
+        int ret = file_write(file_to_write, (const void*)kerbuf, size);
+        lock_release(thread_current()->filesys_lock);
+        return ret;
     }
     return 0;
 
@@ -278,25 +308,30 @@ int read(int fd, void *buffer, unsigned size)
 
     //read from file
     struct file *file_to_read = find_file_desc(fd);
-    
     if(file_to_read) {
-        return file_read(file_to_read, (void*)kerbuf, (int)size);
-        }
-
+        lock_acquire(thread_current()->filesys_lock);
+        int ret =  file_read(file_to_read, (void*)kerbuf, (int)size);
+        lock_release(thread_current()->filesys_lock);
+        return ret;
+    }
     return -1;
 }
 
 int filesize(int fd) {
     struct file *target = find_file_desc(fd);
-    return file_length(target);
+    lock_acquire(thread_current()->filesys_lock);
+    int ret = file_length(target);
+    lock_release(thread_current()->filesys_lock);
+    return ret;
 }
 
 void seek(int fd, unsigned position) {
     struct file *file_to_seek = find_file_desc(fd);
-
+    lock_acquire(thread_current()->filesys_lock);
     if(!file_to_seek)
         exit(-1);
     file_seek(file_to_seek, position);
+    lock_release(thread_current()->filesys_lock);
 }
 
 int tell(int fd) {
@@ -304,6 +339,9 @@ int tell(int fd) {
 
     if(!file_to_tell)
         exit(-1);
-    return (unsigned)file_tell(file_to_tell);
+    lock_acquire(thread_current()->filesys_lock);
+    int ret = file_tell(file_to_tell);
+    lock_release(thread_current()->filesys_lock);
+    return ret;
 }
 

@@ -338,6 +338,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire(thread_current()->filesys_lock);
   file = filesys_open (prog_name);
   if (file == NULL) 
     {
@@ -355,9 +356,10 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
       || ehdr.e_phnum > 1024) 
     {
       printf ("load: %s: error loading executable\n", prog_name);
+      lock_release(thread_current()->filesys_lock);
       goto done; 
     }
-  
+    lock_release(thread_current()->filesys_lock);
     palloc_free_page(prog_name);
 
   /* Read program headers. */

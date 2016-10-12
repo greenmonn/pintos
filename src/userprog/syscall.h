@@ -6,6 +6,7 @@
 struct file_elem {
     struct file *name;
     int fd;
+    char filename[15];
     struct list_elem elem;
 };
 
