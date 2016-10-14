@@ -24,14 +24,19 @@ static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
 //Access to the parent's child list, and get the child struct!
 struct child_elem *find_child(int pid) {
+    //printf("find_child %d\n", pid);
     struct list_elem *e;
     struct child_elem *child;
     if (thread_current()->parent == NULL) //if parent has already exit
         return NULL;
+    //printf("parent exist\n");
     struct list *child_list = &thread_current()->parent->child_list;
+    //printf("child list exist\n");
     for (e = list_begin(child_list); e != list_end(child_list); e = list_next(e)) {
         child = list_entry(e, struct child_elem, elem);
+        //printf("finding %d\n", child->pid);
         if (child->pid == pid) {
+            //printf("finding %d\n", child->pid);
             return child;
         }
     }
@@ -98,8 +103,11 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
     return tid;
   }
-  //printf("tid : %d\n", tid); 
-  sema_down(&thread_current()->sema);
+  printf("tid : %d\n", tid); 
+  intr_disable();
+  thread_block();
+  intr_enable();
+  //sema_down(&thread_current()->sema);
   //struct child_elem *child = find_my_child(tid);
   /*
   while ((check = child->load) == 0) {
@@ -136,7 +144,9 @@ start_process (void *f_name)
           child->load = 1;
       }
       thread_current()->parent->is_child_load = 1;
-      sema_up(&thread_current()->parent->sema);
+      //sema_up(&thread_current()->parent->sema);
+      if(thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
+          thread_unblock(thread_current()->parent);
   }
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
@@ -146,6 +156,10 @@ start_process (void *f_name)
       struct child_elem *child = find_child(thread_current()->tid);
       thread_current()->proc_status = -1;
       thread_current()->parent->is_child_load = 2;
+      
+      if(thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
+          thread_unblock(thread_current()->parent);
+      //sema_up(&thread_current()->parent->sema);
       if (child != NULL) {
 	    child->load = 2;
         child->status = -1;
@@ -201,7 +215,10 @@ process_wait (tid_t child_tid UNUSED)
         barrier();
     }
     */
-    sema_down(&thread_current()->sema);
+    if (waiting_child->exit != 1) {
+        struct child_elem *child = find_my_child(child_tid);
+        sema_down(&child->TCB->sema);
+    }
     status = waiting_child->status;
 
     /* FREE RESOURCES
@@ -271,8 +288,13 @@ process_exit (void)
 
   //struct child_elem *child = find_child(thread_current()->tid);
   printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc_status);
-  
-  sema_up(&thread_current()->parent->sema);
+ 
+  //thread_unblock(thread_current()->parent);
+  /*if (thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
+    thread_unblock(thread_current()->parent);*/
+  while (!list_empty(&thread_current()->sema.waiters)) {
+     sema_up(&thread_current()->sema);
+  }
 }
 
 /* Sets up the CPU for running user code in the current
@@ -637,6 +659,7 @@ static bool setup_stack (void **esp, char *f_name)
     }
 
   /* filename parse */
+  printf("setup_stack\n");
   char* fn_copy = palloc_get_page(PAL_USER);
   //char** tmp = (PAL_USER);
   if (fn_copy == NULL)
@@ -653,6 +676,7 @@ static bool setup_stack (void **esp, char *f_name)
   for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
           token = strtok_r (NULL, " ", &save_ptr)) {
       *esp -= strlen(token) + 1; 
+      printf("token : %s\n", token);
       arg_addr[argc-1-i] = (char*)*esp;
       i++;
       int idx = 0;
