@@ -59,15 +59,17 @@ process_execute (const char *file_name)
  
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (fn_copy2, PRI_DEFAULT, start_process, fn_copy);
+  
+  palloc_free_page (fn_copy2);
+
   int check;
   while ((check = check_child_load()) == 0) {
   	barrier();
   }
 
-
-  if (tid == TID_ERROR)
+  if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
-  
+  }
   if (check == 2) {
   	tid = -1;
   } 
@@ -651,7 +653,7 @@ static bool setup_stack (void **esp, char *f_name)
   *esp -= 4;
   *(int*)(*esp) = 0; //return address
   free(arg_addr);
-
+  palloc_free_page(fn_copy);
   //Save 
 
 
