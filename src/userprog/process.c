@@ -23,10 +23,10 @@ static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
 int check_child_load () {
-	struct list* child_list = &thread_current()->child_list;
-	struct list_elem* e;
+	struct list *child_list = &thread_current()->child_list;
+	struct list_elem *e;
 	for (e = list_begin(child_list); e != list_end(child_list); e = list_next(e)) {
-		struct process* proc = list_entry(e,struct process, elem);
+		struct child_elem *proc = list_entry(e,struct child_elem, elem);
 		if (proc->load == 0) {
 			return 0;
 		} else if (proc->load == 2) {
@@ -74,6 +74,22 @@ process_execute (const char *file_name)
   return tid;
 }
 
+//Access to the parent's child list, and get the child struct!
+struct child_elem *find_child(int pid) {
+    struct list_elem *e;
+    struct child_elem *child;
+    if (thread_current()->parent == NULL) //if parent has already exit
+        return NULL;
+    struct list *child_list = &thread_current()->parent->child_list;
+    for (e = list_begin(child_list); e != list_end(child_list); e = list_next(e)) {
+        child = list_entry(e, struct child_elem, elem);
+        if (child->pid == pid) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
 /* A thread function that loads a user process and makes it start
    running. */
 static void
@@ -94,15 +110,22 @@ start_process (void *f_name)
   success = load (f_name, &if_.eip, &if_.esp);
   
   if (success) {
-  	thread_current()->proc->load = 1;
+      struct child_elem *child = find_child(thread_current()->tid);
+      if (child != NULL) {
+          child->load = 1;
+      }
   }
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) {
-	  thread_current()->proc->load = 2;
-      thread_current()->proc->status = -1;
+      struct child_elem *child = find_child(thread_current()->tid);
+      thread_current()->proc_status = -1;
+      if (child != NULL) {
+	    child->load = 2;
+        child->status = -1;
+      }
 	  thread_exit ();
   }
 
@@ -131,9 +154,9 @@ process_wait (tid_t child_tid UNUSED)
 { 
 	int status = -1;
     struct list_elem *e;
-    struct process *waiting_child;
+    struct child_elem *waiting_child;
     for (e = list_begin(&thread_current()->child_list) ; e != list_end(&thread_current()->child_list); e = list_next(e)) {
-        struct process *proc = list_entry(e, struct process, elem);
+        struct child_elem *proc = list_entry(e, struct child_elem, elem);
         if (proc->pid == child_tid) {
             waiting_child = proc;
             break;
@@ -155,7 +178,7 @@ process_wait (tid_t child_tid UNUSED)
     }
     status = waiting_child->status;
 
-    /* FREE RESOURCES */
+    /* FREE RESOURCES
 
     struct file_elem *fe;
     // FILE_LIST
@@ -163,9 +186,10 @@ process_wait (tid_t child_tid UNUSED)
         e = list_pop_front(&waiting_child->file_list);
         fe = list_entry(e, struct file_elem, elem);
         free(fe);
-    }
+    }*/
 
     list_remove(&waiting_child->elem);
+
     free(waiting_child);
     return status;
 
@@ -198,7 +222,29 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc->status);
+
+  /* FREE FILE DESCRIPTORS */
+  
+  struct list_elem *e;
+  struct file_elem *fe;
+  while(!list_empty(&thread_current()->file_list)) {
+      e = list_pop_front(&thread_current()->file_list);
+      fe = list_entry(e, struct file_elem, elem);
+      //close -> it freed!
+      close(fe->fd);
+  }
+
+  struct child_elem *ce;
+  /* Free child list - make children's parent to NULL */
+  while(!list_empty(&thread_current()->child_list)) {
+      e = list_pop_front(&thread_current()->child_list);
+      ce = list_entry(e, struct child_elem, elem);
+      ce->TCB->parent = NULL;
+      free(ce);
+  }
+
+  //struct child_elem *child = find_child(thread_current()->tid);
+  printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc_status);
 }
 
 /* Sets up the CPU for running user code in the current

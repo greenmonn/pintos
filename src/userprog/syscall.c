@@ -196,11 +196,11 @@ int open(const char *name) {
    if (!openfile) {
        return -1;
    }
-   struct list *file_list = &thread_current()->proc->file_list;
+   struct list *file_list = &thread_current()->file_list;
    struct file_elem *fe = malloc(sizeof(struct file_elem));
    fe->name = openfile;
    //fe->file_lock = file_lock;
-   fd = fe->fd = thread_current()->proc->fd_num++;
+   fd = fe->fd = thread_current()->fd_num++;
    strlcpy(fe->filename, kername, strlen(kername)+1);
    list_push_back(file_list, &fe->elem);
    lock_release(&filesys_lock);
@@ -211,7 +211,7 @@ struct file *find_file_desc(int fd) {
     struct list_elem *e;
     struct file_elem *fe;
     struct file *target;
-    for (e = list_begin(&thread_current()->proc->file_list); e != list_end(&thread_current()->proc->file_list); e = list_next(e)) {
+    for (e = list_begin(&thread_current()->file_list); e != list_end(&thread_current()->file_list); e = list_next(e)) {
         fe = list_entry(e, struct file_elem, elem);
         if (fe->fd == fd) {
             return fe->name;
@@ -223,7 +223,7 @@ struct file *find_file_desc(int fd) {
 void close(int fd) {
 
 	lock_acquire(&filesys_lock);
-    struct list *file_list = &thread_current()->proc->file_list;
+    struct list *file_list = &thread_current()->file_list;
     struct list_elem *e;
     struct file_elem *fe;
     
@@ -245,8 +245,12 @@ void close(int fd) {
 }
 
 void exit(int status) {
-    thread_current()->proc->exit = 1;
-	thread_current()->proc->status = status;
+    struct child_elem *child = find_child(thread_current()->tid);
+    if (child != NULL) {
+        child->status = status;
+        child->exit = 1;
+    }
+	thread_current()->proc_status = status;
 //	printf("%s: exit(%d)\n", thread_current()->name,status);
 	thread_exit(); 
 }
@@ -269,7 +273,7 @@ char *find_file_name(int fd) {
     struct list_elem *e;
     struct file_elem *fe;
     struct file *target;
-    for (e = list_begin(&thread_current()->proc->file_list); e != list_end(&thread_current()->proc->file_list); e = list_next(e)) {
+    for (e = list_begin(&thread_current()->file_list); e != list_end(&thread_current()->file_list); e = list_next(e)) {
         fe = list_entry(e, struct file_elem, elem);
         if (fe->fd == fd) {
             return fe->filename;

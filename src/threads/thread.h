@@ -97,9 +97,13 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 #endif
     struct list child_list;
-    struct process *proc;    //process information block (parent, child..)
-    struct lock *filesys_lock;
-    //struct process *parent;
+    int proc_status;
+    //struct process *proc;    //process information block (parent, child..)
+    /* File Descriptor Table */
+    int fd_num;
+    struct list file_list;
+
+    struct thread *parent;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

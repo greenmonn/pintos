@@ -11,25 +11,15 @@ struct file_elem {
 	struct lock *file_lock;
 };
 
-struct process {
-    int exit;
-	tid_t pid;
-    int status;
-    struct list_elem elem;
-    int fd_num;
-	int load;
-	bool waited;
-    struct list file_list;
-};
-
-/*struct child_elem {
+struct child_elem {
 	struct list_elem elem;
 	int exit;
 	int status;
-	int pid;
+	tid_t pid;
 	int load;
 	bool waited;
-}*/
+    struct thread *TCB;
+};
 
 void syscall_init (void);
 

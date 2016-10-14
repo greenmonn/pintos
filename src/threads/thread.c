@@ -107,7 +107,6 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-  lock_init (&filesys_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -164,15 +163,14 @@ thread_print_stats (void)
 }
 
 void
-init_process (struct process* proc, tid_t pid) {
+init_child (struct child_elem *proc, tid_t pid) {
 	proc->pid = pid;
     proc->exit = 0;
     proc->status = 0;
 	proc->load = 0;
     proc->waited = false;
-    proc->fd_num = 2;
-    list_init(&proc->file_list);
 }
+
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
    and adds it to the ready queue.  Returns the thread identifier
@@ -208,14 +206,20 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  
+  /* Userprog Impl. */
   char * idle= "idle";
   if (strcmp(name, idle)) {
-  /* Making new thread as a child of current */
-  struct process* proc;
-  proc = malloc(sizeof(struct process));
-  init_process (proc, tid);
-  t->proc = proc;
-  list_push_back(&thread_current()->child_list, &proc->elem);
+  // Making new thread as a child of current
+  struct child_elem* child;
+  child = malloc(sizeof(struct child_elem));
+  init_child (child, tid);
+  child->TCB = t;
+
+  t->fd_num = 2;
+  list_init(&t->file_list);
+  t->parent = thread_current();
+  list_push_back(&thread_current()->child_list, &child->elem);
   }
 
   /* Stack frame for kernel_thread(). */
@@ -490,7 +494,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->acquiring_lock = NULL;  
   t->original_pri = priority; //not donated
   t->magic = THREAD_MAGIC;
-  t->filesys_lock = &filesys_lock;
+  t->proc_status = 0;
+  t->parent = NULL;
+
   list_init(&t->acquired_lock_list);
   list_init(&t->child_list);
 }
