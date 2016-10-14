@@ -22,6 +22,35 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
+//Access to the parent's child list, and get the child struct!
+struct child_elem *find_child(int pid) {
+    struct list_elem *e;
+    struct child_elem *child;
+    if (thread_current()->parent == NULL) //if parent has already exit
+        return NULL;
+    struct list *child_list = &thread_current()->parent->child_list;
+    for (e = list_begin(child_list); e != list_end(child_list); e = list_next(e)) {
+        child = list_entry(e, struct child_elem, elem);
+        if (child->pid == pid) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
+struct child_elem *find_my_child(int pid) {
+    struct list_elem *e;
+    struct child_elem *child;
+    struct list *child_list = &thread_current()->child_list;
+    for (e = list_begin(child_list); e != list_end(child_list); e= list_next(e)) {
+        child = list_entry(e, struct child_elem, elem);
+        if (child->pid == pid) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
 int check_child_load () {
 	struct list *child_list = &thread_current()->child_list;
 	struct list_elem *e;
@@ -65,36 +94,23 @@ process_execute (const char *file_name)
   palloc_free_page (fn_copy2);
 
   int check;
-  while ((check = check_child_load()) == 0) {
+  if (tid == TID_ERROR) {
+    palloc_free_page (fn_copy);
+    return tid;
+  }
+  //printf("tid : %d\n", tid); 
+  sema_down(&thread_current()->sema);
+  //struct child_elem *child = find_my_child(tid);
+  /*
+  while ((check = child->load) == 0) {
   	barrier();
   }
-
-  if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy); 
-  }
-  if (check == 2) {
-        //palloc_free_page(fn_copy);
+  */
+  if (thread_current()->is_child_load == 2) {
      	tid = -1;
   } 
   return tid;
 }
-
-//Access to the parent's child list, and get the child struct!
-struct child_elem *find_child(int pid) {
-    struct list_elem *e;
-    struct child_elem *child;
-    if (thread_current()->parent == NULL) //if parent has already exit
-        return NULL;
-    struct list *child_list = &thread_current()->parent->child_list;
-    for (e = list_begin(child_list); e != list_end(child_list); e = list_next(e)) {
-        child = list_entry(e, struct child_elem, elem);
-        if (child->pid == pid) {
-            return child;
-        }
-    }
-    return NULL;
-}
-
 /* A thread function that loads a user process and makes it start
    running. */
 static void
@@ -119,6 +135,8 @@ start_process (void *f_name)
       if (child != NULL) {
           child->load = 1;
       }
+      thread_current()->parent->is_child_load = 1;
+      sema_up(&thread_current()->parent->sema);
   }
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
@@ -127,6 +145,7 @@ start_process (void *f_name)
   if (!success) {
       struct child_elem *child = find_child(thread_current()->tid);
       thread_current()->proc_status = -1;
+      thread_current()->parent->is_child_load = 2;
       if (child != NULL) {
 	    child->load = 2;
         child->status = -1;
@@ -177,10 +196,12 @@ process_wait (tid_t child_tid UNUSED)
     }   // FAIL case 2 : the process that calls wait has already called wait on pid.
     
     waiting_child->waited = true;
-
+/*
     while(!waiting_child->exit) {
         barrier();
     }
+    */
+    sema_down(&thread_current()->sema);
     status = waiting_child->status;
 
     /* FREE RESOURCES
@@ -250,6 +271,8 @@ process_exit (void)
 
   //struct child_elem *child = find_child(thread_current()->tid);
   printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc_status);
+  
+  //sema_up(&thread_current()->parent->sema);
 }
 
 /* Sets up the CPU for running user code in the current

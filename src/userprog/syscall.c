@@ -249,10 +249,13 @@ void exit(int status) {
     if (child != NULL) {
         child->status = status;
         child->exit = 1;
+
     }
 	thread_current()->proc_status = status;
 //	printf("%s: exit(%d)\n", thread_current()->name,status);
-	thread_exit(); 
+	thread_exit();
+    
+    sema_up(&thread_current()->parent->sema);        
 }
 
 int exec(const char *cmd_line) {

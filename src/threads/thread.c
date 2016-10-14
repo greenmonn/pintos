@@ -496,7 +496,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   t->proc_status = 0;
   t->parent = NULL;
-
+  t->is_child_load = 0;
+  sema_init(&t->sema, 0);
   list_init(&t->acquired_lock_list);
   list_init(&t->child_list);
 }
