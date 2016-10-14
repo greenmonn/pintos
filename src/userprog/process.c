@@ -272,7 +272,7 @@ process_exit (void)
   //struct child_elem *child = find_child(thread_current()->tid);
   printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc_status);
   
-  //sema_up(&thread_current()->parent->sema);
+  sema_up(&thread_current()->parent->sema);
 }
 
 /* Sets up the CPU for running user code in the current

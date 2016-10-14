@@ -253,9 +253,10 @@ void exit(int status) {
     }
 	thread_current()->proc_status = status;
 //	printf("%s: exit(%d)\n", thread_current()->name,status);
+//    sema_up(&thread_current()->parent->sema);        
 	thread_exit();
     
-    sema_up(&thread_current()->parent->sema);        
+
 }
 
 int exec(const char *cmd_line) {
