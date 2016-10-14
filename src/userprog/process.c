@@ -49,8 +49,10 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
+  if (fn_copy == NULL) {
+      palloc_free_page(fn_copy);
+      return TID_ERROR;
+  }
   strlcpy (fn_copy, file_name, PGSIZE);
   char *save_ptr;
   char* fn_copy2 = palloc_get_page(PAL_USER);
@@ -71,7 +73,8 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy); 
   }
   if (check == 2) {
-  	tid = -1;
+        //palloc_free_page(fn_copy);
+     	tid = -1;
   } 
   return tid;
 }
@@ -405,7 +408,6 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", prog_name);
       goto done; 
     }
-    palloc_free_page(prog_name);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -481,6 +483,9 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
+  
+  palloc_free_page(prog_name);
+
   file_close (file);
   return success;
 }
