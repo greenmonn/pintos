@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include "threads/synch.h"
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -9,9 +10,12 @@
 
 static void syscall_handler (struct intr_frame *);
 
+struct lock filesys_lock;
+
 void
 syscall_init (void) 
-{
+{ 
+  lock_init(&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -115,15 +119,15 @@ syscall_handler (struct intr_frame *f)
         break;
 	}
 	case SYS_READ:
-	{
+	{	
 	    get_arg(f, arg, 3);
-        f->eax = read((int)arg[0], (void*)arg[1], (unsigned)arg[2]);
+		f->eax = read((int)arg[0], (void*)arg[1], (unsigned)arg[2]);
         break;
 	}
 	case SYS_WRITE:
 	{
-	    get_arg(f, arg, 3);
-        f->eax = write((int)arg[0],(const void*) arg[1],(unsigned) arg[2]);
+		get_arg(f, arg, 3);
+		f->eax = write((int)arg[0],(const void*) arg[1],(unsigned) arg[2]);
         break;
 	}
 	case SYS_SEEK:
@@ -140,7 +144,8 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_CLOSE:
 	{
-	  
+	  	get_arg(f, arg, 1);
+		close(arg[0]);
         break;
 	}
   }
@@ -160,18 +165,18 @@ int create(const char *name, unsigned size) {
     if (strlen(name) > 14) {
         return 0;
     }
-    lock_acquire(thread_current()->filesys_lock);
+    lock_acquire(&filesys_lock);
     int ret = filesys_create(name, size);
-    lock_release(thread_current()->filesys_lock);
+    lock_release(&filesys_lock);
     return ret;
 }
 
 int remove(const char *file) {
     if (!userptr_valid(file))
         exit(-1);
-    lock_acquire(thread_current()->filesys_lock);
+    lock_acquire(&filesys_lock);
     int ret = filesys_remove(file);
-    lock_release(thread_current()->filesys_lock);
+    lock_release(&filesys_lock);
     return ret;
 }
 
@@ -181,10 +186,12 @@ int open(const char *name) {
         exit(-1);
    char* kername = pagedir_get_page(thread_current()->pagedir, name);
    int fd;
-   //printf("%s\n", name);
-   lock_acquire(thread_current()->filesys_lock);
+   //printf("%s\n", name);:
+   //struct lock *file_lock = malloc(sizeof(struct lock));
+   //lock_init(file_lock);
+   lock_acquire(&filesys_lock);
    struct file* openfile = filesys_open((const char*)kername);
-   lock_release(thread_current()->filesys_lock);
+   //lock_release(thread_current()->filesys_lock);
    //printf("%x\n", openfile);
    if (!openfile) {
        return -1;
@@ -192,48 +199,14 @@ int open(const char *name) {
    struct list *file_list = &thread_current()->proc->file_list;
    struct file_elem *fe = malloc(sizeof(struct file_elem));
    fe->name = openfile;
+   //fe->file_lock = file_lock;
    fd = fe->fd = thread_current()->proc->fd_num++;
    strlcpy(fe->filename, kername, strlen(kername)+1);
    list_push_back(file_list, &fe->elem);
+   lock_release(&filesys_lock);
    return fd;
 }
 
-void close(int fd) {
-
-    struct list *file_list = &thread_current()->proc->file_list;
-    struct list_elem *e;
-    struct file_elem *fe;
-    
-    for (e = list_begin(file_list); e != list_end(file_list); e = list_next(e)) {
-        fe = list_entry(e, struct file_elem, elem);
-        if (fe->fd == fd) {
-            e = list_next(e);
-            list_remove(list_prev(e));
-            e = list_prev(e);
-            break;
-        }
-    }
-}
-
-void exit(int status) {
-    thread_current()->proc->exit = 1;
-	thread_current()->proc->status = status;
-//	printf("%s: exit(%d)\n", thread_current()->name,status);
-	thread_exit(); 
-}
-
-int exec(const char *cmd_line) {
-	char *kerbuf = pagedir_get_page(thread_current()->pagedir, cmd_line);
-    int pid = process_execute(kerbuf);
-	return pid;
-}
-
-int wait(int pid) {
-    int status;
-	status = process_wait(pid);
-    return status;
-}
-    
 struct file *find_file_desc(int fd) {
     struct list_elem *e;
     struct file_elem *fe;
@@ -246,6 +219,52 @@ struct file *find_file_desc(int fd) {
     }
     return NULL;
 }
+
+void close(int fd) {
+
+	lock_acquire(&filesys_lock);
+    struct list *file_list = &thread_current()->proc->file_list;
+    struct list_elem *e;
+    struct file_elem *fe;
+    
+    for (e = list_begin(file_list); e != list_end(file_list); e = list_next(e)) {
+        fe = list_entry(e, struct file_elem, elem);
+        if (fe->fd == fd) {
+			struct file *file_to_close = find_file_desc(fd);
+			file_close(file_to_close);
+			e = list_next(e);
+            list_remove(list_prev(e));
+	  		//lock_release(fe->file_lock);
+			//free(fe->file_lock);
+			free(fe);
+			e = list_prev(e);
+			break;
+        }
+    }
+	lock_release(&filesys_lock);
+}
+
+void exit(int status) {
+    thread_current()->proc->exit = 1;
+	thread_current()->proc->status = status;
+//	printf("%s: exit(%d)\n", thread_current()->name,status);
+	thread_exit(); 
+}
+
+int exec(const char *cmd_line) {
+	char *kerbuf = pagedir_get_page(thread_current()->pagedir, cmd_line);
+    lock_acquire(&filesys_lock);
+	int pid = process_execute(kerbuf);
+	lock_release(&filesys_lock);
+	return pid;
+}
+
+int wait(int pid) {
+    int status;
+	status = process_wait(pid);
+    return status;
+}
+    
 char *find_file_name(int fd) {
     struct list_elem *e;
     struct file_elem *fe;
@@ -273,20 +292,26 @@ int write(int fd, const void *buffer, unsigned size)
     }
 
     //write to file
+	lock_acquire(&filesys_lock);
     struct file *file_to_write = find_file_desc(fd);
     char* filename = find_file_name(fd);
+	
+	//printf("write\n");
 
     //Cannot write executing code (for rox tests)
     if (filename != NULL && !strcmp(filename, thread_current()->name)) {
-        return 0;
+        lock_release(&filesys_lock);
+		return 0;
     }
 
     if (file_to_write) {
-        lock_acquire(thread_current()->filesys_lock);
+        //lock_acquire(thread_current()->filesys_lock);
         int ret = file_write(file_to_write, (const void*)kerbuf, size);
-        lock_release(thread_current()->filesys_lock);
-        return ret;
+        //lock_release(thread_current()->filesys_lock);
+        lock_release(&filesys_lock);
+		return ret;
     }
+	lock_release(&filesys_lock);
     return 0;
 
 }
@@ -307,41 +332,54 @@ int read(int fd, void *buffer, unsigned size)
     }
 
     //read from file
+	lock_acquire(&filesys_lock);
     struct file *file_to_read = find_file_desc(fd);
     if(file_to_read) {
-        lock_acquire(thread_current()->filesys_lock);
+        //lock_acquire(thread_current()->filesys_lock);
         int ret =  file_read(file_to_read, (void*)kerbuf, (int)size);
-        lock_release(thread_current()->filesys_lock);
-        return ret;
+        //lock_release(thread_current()->filesys_lock);
+        lock_release(&filesys_lock);
+		return ret;
     }
+	lock_release(&filesys_lock);
     return -1;
 }
 
 int filesize(int fd) {
+	lock_acquire(&filesys_lock);
     struct file *target = find_file_desc(fd);
-    lock_acquire(thread_current()->filesys_lock);
+    //lock_acquire(thread_current()->filesys_lock);
     int ret = file_length(target);
-    lock_release(thread_current()->filesys_lock);
-    return ret;
+    //lock_release(thread_current()->filesys_lock);
+    lock_release(&filesys_lock);
+	return ret;
 }
 
 void seek(int fd, unsigned position) {
+	lock_acquire(&filesys_lock);
     struct file *file_to_seek = find_file_desc(fd);
-    lock_acquire(thread_current()->filesys_lock);
-    if(!file_to_seek)
-        exit(-1);
+    //lock_acquire(thread_current()->filesys_lock);
+    if(!file_to_seek) {
+        lock_release(&filesys_lock);
+		exit(-1);
+	}
     file_seek(file_to_seek, position);
-    lock_release(thread_current()->filesys_lock);
+    //lock_release(thread_current()->filesys_lock);
+	lock_release(&filesys_lock);
 }
 
 int tell(int fd) {
+	lock_acquire(&filesys_lock);
     struct file *file_to_tell = find_file_desc(fd);
 
-    if(!file_to_tell)
-        exit(-1);
-    lock_acquire(thread_current()->filesys_lock);
+    if(!file_to_tell) {
+        lock_release(&filesys_lock);
+		exit(-1);
+	}
+    //lock_acquire(thread_current()->filesys_lock);
     int ret = file_tell(file_to_tell);
-    lock_release(thread_current()->filesys_lock);
-    return ret;
+    //lock_release(thread_current()->filesys_lock);
+    lock_release(&filesys_lock);
+	return ret;
 }
 
