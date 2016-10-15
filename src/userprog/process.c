@@ -108,17 +108,10 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
     return tid;
   }
-  //printf("tid : %d\n", tid); 
-  intr_disable();
-  thread_block();
-  intr_enable();
-  //sema_down(&thread_current()->sema);
-  //struct child_elem *child = find_my_child(tid);
-  /*
-  while ((check = child->load) == 0) {
-  	barrier();
-  }
-  */
+    intr_disable();
+    thread_block();
+    intr_enable();
+  
   if (thread_current()->is_child_load == 2) {
      	tid = -1;
   } 
@@ -543,7 +536,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   
   palloc_free_page(prog_name);
   
-  file_counter--;
+  //file_counter--;
   file_close (file);
   return success;
 }
@@ -672,63 +665,62 @@ static bool setup_stack (void **esp, char *f_name)
     }
 
   /* filename parse */
-  //printf("setup_stack\n");
-  
-  char* fn_copy = palloc_get_page(PAL_USER);
-  //char** tmp = (PAL_USER);
-  if (fn_copy == NULL){
+  if (success) { 
+      char* fn_copy = palloc_get_page(PAL_USER);
+      if (fn_copy == NULL){
+          palloc_free_page(fn_copy);
+          thread_exit();
+      }
+      strlcpy(fn_copy, f_name, PGSIZE);
+      int argc = calc_argc(fn_copy);
+      if (argc == -1) {
+          thread_exit();
+      }
+      int i = 0;
+      char** arg_addr = (char**)malloc(argc * sizeof(char*));
+      if (!arg_addr) {
+          free(arg_addr);
+          thread_exit();
+          printf("no memory\n");
+      }
+      char* save_ptr, *token;
+
+      //Save string to the stack
+      for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
+              token = strtok_r (NULL, " ", &save_ptr)) {
+          int temp_sl = strlen(token);
+          *esp -= temp_sl + 1; 
+          arg_addr[argc-1-i] = (char*)*esp;
+          i++;
+          int idx = 0;
+          for (idx = 0; idx < temp_sl + 1; idx++) {
+              *((char*)(*esp + idx)) = token[idx];
+          }
+
+          //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
+
+
+      }
+
+      //word align + argv[argc]
+      *esp -= (size_t)(*esp)%4 + 4;
+      *(int*)(*esp) = 0;
+      *esp -= 4;
+
+      //save pointer to argv & argc
+      for (i=0; i<argc; i++) {
+          *(char**)(*esp) = arg_addr[i];
+          *esp -= 4;
+      }
+      *(char**)(*esp) = *esp + 4;
+      *esp -= 4;
+      *(int*)(*esp) = argc;
+      *esp -= 4;
+      *(int*)(*esp) = 0; //return address
+      free(arg_addr);
       palloc_free_page(fn_copy);
-	  thread_exit();
+      //Save 
   }
-  strlcpy(fn_copy, f_name, PGSIZE);
-  int argc = calc_argc(fn_copy);
-  if (argc == -1) {
-  	thread_exit();
-  }
-  int i = 0;
-  char** arg_addr = (char**)malloc(argc * sizeof(char*));
-  if (!arg_addr) {
-  	  free(arg_addr);
-	  thread_exit();
-	  printf("no memory\n");
-  }
-  char* save_ptr, *token;
-
-  //Save string to the stack
-  for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
-          token = strtok_r (NULL, " ", &save_ptr)) {
-	  int temp_sl = strlen(token);
-	  *esp -= temp_sl + 1; 
-      arg_addr[argc-1-i] = (char*)*esp;
-	  i++;
-      int idx = 0;
-	  for (idx = 0; idx < temp_sl + 1; idx++) {
-		  *((char*)(*esp + idx)) = token[idx];
-	  }
-    
-      //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
-
-
-  }
-  
-  //word align + argv[argc]
-  *esp -= (size_t)(*esp)%4 + 4;
-  *(int*)(*esp) = 0;
-  *esp -= 4;
-  
-  //save pointer to argv & argc
-  for (i=0; i<argc; i++) {
-     *(char**)(*esp) = arg_addr[i];
-     *esp -= 4;
-  }
-  *(char**)(*esp) = *esp + 4;
-  *esp -= 4;
-  *(int*)(*esp) = argc;
-  *esp -= 4;
-  *(int*)(*esp) = 0; //return address
-  free(arg_addr);
-  palloc_free_page(fn_copy);
-  //Save 
 
 
   return success;
