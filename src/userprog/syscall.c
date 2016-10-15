@@ -15,6 +15,7 @@ struct lock filesys_lock;
 void
 syscall_init (void) 
 { 
+  //file_counter = 0;
   lock_init(&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
@@ -107,8 +108,8 @@ syscall_handler (struct intr_frame *f)
         break;
 	}
 	case SYS_OPEN:
-	{
-        get_arg(f, arg, 1);
+	{	
+		get_arg(f, arg, 1);
         f->eax = open((const char*)arg[0]);
         break;
 	}
@@ -144,7 +145,7 @@ syscall_handler (struct intr_frame *f)
 	}
 	case SYS_CLOSE:
 	{
-	  	get_arg(f, arg, 1);
+		get_arg(f, arg, 1);
 		close(arg[0]);
         break;
 	}
@@ -186,20 +187,21 @@ int open(const char *name) {
         exit(-1);
    char* kername = pagedir_get_page(thread_current()->pagedir, name);
    int fd;
-   //printf("%s\n", name);:
-   //struct lock *file_lock = malloc(sizeof(struct lock));
-   //lock_init(file_lock);
    lock_acquire(&filesys_lock);
    struct file* openfile = filesys_open((const char*)kername);
-   //lock_release(thread_current()->filesys_lock);
-   //printf("%x\n", openfile);
    if (!openfile) {
        return -1;
    }
+
    struct list *file_list = &thread_current()->file_list;
    struct file_elem *fe = malloc(sizeof(struct file_elem));
+   
+   if (!fe) {
+   	file_close(openfile);
+	return -1;
+   }
+   
    fe->name = openfile;
-   //fe->file_lock = file_lock;
    fd = fe->fd = thread_current()->fd_num++;
    strlcpy(fe->filename, kername, strlen(kername)+1);
    list_push_back(file_list, &fe->elem);
@@ -221,7 +223,6 @@ struct file *find_file_desc(int fd) {
 }
 
 void close(int fd) {
-
 	lock_acquire(&filesys_lock);
     struct list *file_list = &thread_current()->file_list;
     struct list_elem *e;

@@ -90,20 +90,25 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
   char *save_ptr;
   char* fn_copy2 = palloc_get_page(PAL_USER);
+  if (!fn_copy2) {
+  	palloc_free_page(fn_copy2);
+	return TID_ERROR;
+  }
+  
   strlcpy (fn_copy2, file_name, PGSIZE);
   strtok_r(fn_copy2, " ", &save_ptr);
  
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (fn_copy2, PRI_DEFAULT, start_process, fn_copy);
   
-  palloc_free_page (fn_copy2);
+  palloc_free_page(fn_copy2);
 
   int check;
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy);
     return tid;
   }
-  printf("tid : %d\n", tid); 
+  //printf("tid : %d\n", tid); 
   intr_disable();
   thread_block();
   intr_enable();
@@ -138,6 +143,7 @@ start_process (void *f_name)
 
   success = load (f_name, &if_.eip, &if_.esp);
   
+  palloc_free_page(f_name); 
   if (success) {
       struct child_elem *child = find_child(thread_current()->tid);
       if (child != NULL) {
@@ -151,7 +157,6 @@ start_process (void *f_name)
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success) {
       struct child_elem *child = find_child(thread_current()->tid);
       thread_current()->proc_status = -1;
@@ -271,10 +276,10 @@ process_exit (void)
   struct list_elem *e;
   struct file_elem *fe;
   while(!list_empty(&thread_current()->file_list)) {
-      e = list_pop_front(&thread_current()->file_list);
+      e = list_begin(&thread_current()->file_list);
       fe = list_entry(e, struct file_elem, elem);
       //close -> it freed!
-      close(fe->fd);
+	  close(fe->fd);
   }
 
   struct child_elem *ce;
@@ -292,7 +297,7 @@ process_exit (void)
   //thread_unblock(thread_current()->parent);
   /*if (thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
     thread_unblock(thread_current()->parent);*/
-  while (!list_empty(&thread_current()->sema.waiters)) {
+  if (!list_empty(&thread_current()->sema.waiters)) {
      sema_up(&thread_current()->sema);
   }
 }
@@ -393,7 +398,11 @@ int calc_argc(char* string) {
     int count = 0;
     int slength = strlen(string)+1;
     char* tmpstring = (char*)malloc(slength*sizeof(char));
-    strlcpy(tmpstring, string, slength);
+    if (!tmpstring) {
+		free(tmpstring);
+		return -1;
+	}
+	strlcpy(tmpstring, string, slength);
     for (token = strtok_r(tmpstring, " ", &save_ptr); token != NULL ; 
             token = strtok_r(NULL, " ", &save_ptr)) {
         count++;
@@ -421,6 +430,9 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   
   char* save_ptr;
   char* prog_name = palloc_get_page(PAL_USER);
+  if (!prog_name) {
+  	goto done;
+  }
   strlcpy(prog_name,fn_copy, strlen(fn_copy)+1);
   strtok_r(prog_name," ",&save_ptr);
   strtok_r(NULL," ", &save_ptr);
@@ -530,7 +542,8 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   
   palloc_free_page(prog_name);
-
+  
+  file_counter--;
   file_close (file);
   return success;
 }
@@ -659,30 +672,39 @@ static bool setup_stack (void **esp, char *f_name)
     }
 
   /* filename parse */
-  printf("setup_stack\n");
+  //printf("setup_stack\n");
+  
   char* fn_copy = palloc_get_page(PAL_USER);
   //char** tmp = (PAL_USER);
-  if (fn_copy == NULL)
-      thread_exit();
+  if (fn_copy == NULL){
+      palloc_free_page(fn_copy);
+	  thread_exit();
+  }
   strlcpy(fn_copy, f_name, PGSIZE);
   int argc = calc_argc(fn_copy);
+  if (argc == -1) {
+  	thread_exit();
+  }
   int i = 0;
   char** arg_addr = (char**)malloc(argc * sizeof(char*));
-
+  if (!arg_addr) {
+  	  free(arg_addr);
+	  thread_exit();
+	  printf("no memory\n");
+  }
   char* save_ptr, *token;
 
-  
   //Save string to the stack
   for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL; 
           token = strtok_r (NULL, " ", &save_ptr)) {
-      *esp -= strlen(token) + 1; 
-      printf("token : %s\n", token);
+	  int temp_sl = strlen(token);
+	  *esp -= temp_sl + 1; 
       arg_addr[argc-1-i] = (char*)*esp;
-      i++;
+	  i++;
       int idx = 0;
-      for (idx = 0; idx < strlen(token) + 1; idx++) {
-          *((char*)(*esp + idx)) = token[idx];
-      }
+	  for (idx = 0; idx < temp_sl + 1; idx++) {
+		  *((char*)(*esp + idx)) = token[idx];
+	  }
     
       //hex_dump(0xbfffffc0, (void*)PHYS_BASE-64, 64, true);
 
