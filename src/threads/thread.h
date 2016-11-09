@@ -96,6 +96,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;      /* Page directory. */
+    struct file *exec_file; // executing file of this thread.
 #endif
     /* Implement VM : Supplemental page table */
     struct hash *suppl_pages;
