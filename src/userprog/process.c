@@ -19,6 +19,8 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
 
@@ -89,31 +91,38 @@ process_execute (const char *file_name)
   }
   strlcpy (fn_copy, file_name, PGSIZE);
   char *save_ptr;
-  char* fn_copy2 = palloc_get_page(PAL_USER);
+  char* fn_copy2 = frame_alloc(false);
   if (!fn_copy2) {
-  	palloc_free_page(fn_copy2);
-	return TID_ERROR;
+      palloc_free_page(fn_copy2);
+      return TID_ERROR;
   }
-  
+
   strlcpy (fn_copy2, file_name, PGSIZE);
   strtok_r(fn_copy2, " ", &save_ptr);
- 
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (fn_copy2, PRI_DEFAULT, start_process, fn_copy);
-  
+  //printf("thread create complete\n"); 
   palloc_free_page(fn_copy2);
 
   int check;
   if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy);
-    return tid;
+      palloc_free_page (fn_copy);
+      return tid;
   }
-    intr_disable();
-    thread_block();
-    intr_enable();
-  
+  //intr_disable();
+  //thread_block();
+  //intr_enable();
+  //printf("check child already load\n");
+  sema_up(&thread_current()->sema2);  //1
+  sema_down(&thread_current()->sema);     //1
+  //sema_up(&thread_current()->sema2);
+  //printf("parent woke up by child\n");
+
+
   if (thread_current()->is_child_load == 2) {
-     	tid = -1;
+      process_wait(tid);	
+      tid = -1;    
   } 
   return tid;
 }
@@ -133,19 +142,29 @@ start_process (void *f_name)
   if_.eflags = FLAG_IF | FLAG_MBS;
   
 
-
+  //printf("before load\n");
+  filesys_lock_acquire();
   success = load (f_name, &if_.eip, &if_.esp);
-  
-  palloc_free_page(f_name); 
+  filesys_lock_release();
+  //printf("after load\n");
+  sema_down(&thread_current()->parent->sema2);
+  palloc_free_page(f_name);     //2
   if (success) {
       struct child_elem *child = find_child(thread_current()->tid);
       if (child != NULL) {
           child->load = 1;
       }
-      thread_current()->parent->is_child_load = 1;
-      //sema_up(&thread_current()->parent->sema);
-      if(thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
-          thread_unblock(thread_current()->parent);
+
+      if(thread_current()->parent != NULL) {
+        thread_current()->parent->is_child_load = 1;
+        sema_up(&thread_current()->parent->sema);   //3
+        //printf("success - waked up parent\n");
+        //sema_down(&thread_current()->parent->sema2);
+        //printf("unblocked?\n");
+      }
+      
+      //if(thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
+         // thread_unblock(thread_current()->parent);
   }
   
   //hex_dump(PHYS_BASE-48, (void*)buf, 48, true); 
@@ -153,16 +172,24 @@ start_process (void *f_name)
   if (!success) {
       struct child_elem *child = find_child(thread_current()->tid);
       thread_current()->proc_status = -1;
-      thread_current()->parent->is_child_load = 2;
+      //thread_current()->parent->is_child_load = 2;
       
-      if(thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
-          thread_unblock(thread_current()->parent);
-      //sema_up(&thread_current()->parent->sema);
-      if (child != NULL) {
-	    child->load = 2;
-        child->status = -1;
+      //if(thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
+      //thread_unblock(thread_current()->parent);
+      if(thread_current()->parent != NULL) {
+          thread_current()->parent->is_child_load = 2;
+          if (child != NULL) {
+              child->load = 2;
+              child->status = -1;
+          }
+
+          sema_up(&thread_current()->parent->sema);
+        //sema_down(&thread_current()->parent->sema2);
       }
-	  thread_exit ();
+
+      	  //printf("if not success:\n");
+      thread_exit ();
+      //exit(-1);
   }
 
   /* Start the user process by simulating a return from an
@@ -215,7 +242,7 @@ process_wait (tid_t child_tid UNUSED)
     */
     if (waiting_child->exit != 1) {
         struct child_elem *child = find_my_child(child_tid);
-        sema_down(&child->TCB->sema);
+        sema_down(&child->TCB->sema_wait);
     }
     status = waiting_child->status;
 
@@ -265,7 +292,6 @@ process_exit (void)
     }
 
   /* FREE FILE DESCRIPTORS */
-  
   struct list_elem *e;
   struct file_elem *fe;
   while(!list_empty(&thread_current()->file_list)) {
@@ -274,6 +300,7 @@ process_exit (void)
       //close -> it freed!
 	  close(fe->fd);
   }
+  
 
   struct child_elem *ce;
   /* Free child list - make children's parent to NULL */
@@ -290,8 +317,8 @@ process_exit (void)
   //thread_unblock(thread_current()->parent);
   /*if (thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
     thread_unblock(thread_current()->parent);*/
-  if (!list_empty(&thread_current()->sema.waiters)) {
-     sema_up(&thread_current()->sema);
+  if (!list_empty(&thread_current()->sema_wait.waiters)) {
+     sema_up(&thread_current()->sema_wait);
   }
 }
 
@@ -422,7 +449,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   //strtok_r(NULL, " ", &save_ptr);
   
   char* save_ptr;
-  char* prog_name = palloc_get_page(PAL_USER);
+  char* prog_name = frame_alloc(false);
   if (!prog_name) {
   	goto done;
   }
@@ -431,9 +458,11 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   strtok_r(NULL," ", &save_ptr);
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
-  
 
-  if (t->pagedir == NULL) 
+  /* Implement VM : construct a supplemental page table */
+  t->suppl_pages = suppl_pages_create ();
+  
+  if (t->pagedir == NULL || t->suppl_pages == NULL) 
     goto done;
 
   process_activate ();
@@ -535,9 +564,8 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   
   palloc_free_page(prog_name);
-  
   //file_counter--;
-  file_close (file);
+  //file_close (file);
   return success;
 }
 
@@ -612,7 +640,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  off_t ofs_now = ofs;
+
+  //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Do calculate how to fill this page.
@@ -621,31 +651,28 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+      //Allocate to supplemental page table
+      if (page_read_bytes == 0) {
+          struct page *new_page = make_page(upage, ZERO);
+          page_insert(thread_current()->suppl_pages, new_page);
+          new_page->writable = writable;
+      }
+      else {
+          struct page *new_page = make_page(upage, FILE);
+          page_set_file(thread_current ()->suppl_pages, new_page, file, ofs_now, writable, page_read_bytes);
+      }
+      //printf("set supplemental page - %x %x %x\n", upage, thread_current()->suppl_pages, new_page);
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-
+      //printf("setup offset %d\n", ofs_now);
+      //printf("file address %x\n", file);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs_now += PGSIZE;
     }
+  file_seek (file, ofs_now);
   return true;
 }
 
@@ -654,7 +681,7 @@ static bool setup_stack (void **esp, char *f_name)
 {
   uint8_t *kpage;
   bool success = false;
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = frame_alloc(true);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -666,7 +693,7 @@ static bool setup_stack (void **esp, char *f_name)
 
   /* filename parse */
   if (success) { 
-      char* fn_copy = palloc_get_page(PAL_USER);
+      char* fn_copy = frame_alloc(false);
       if (fn_copy == NULL){
           palloc_free_page(fn_copy);
           thread_exit();

@@ -498,6 +498,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->parent = NULL;
   t->is_child_load = 0;
   sema_init(&t->sema, 0);
+  sema_init(&t->sema2, 0);
+  sema_init(&t->sema_wait, 0);
   list_init(&t->acquired_lock_list);
   list_init(&t->child_list);
 }

@@ -8,5 +8,7 @@
 
 void exception_init (void);
 void exception_print_stats (void);
+void IO_sema_down(void);
+void IO_sema_up(void);
 
 #endif /* userprog/exception.h */

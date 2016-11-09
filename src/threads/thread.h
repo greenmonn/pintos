@@ -97,6 +97,8 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;      /* Page directory. */
 #endif
+    /* Implement VM : Supplemental page table */
+    struct hash *suppl_pages;
     struct list child_list;
     int proc_status;
     //struct process *proc;    //process information block (parent, child..)
@@ -107,6 +109,8 @@ struct thread
     struct thread *parent;
     int is_child_load;
     struct semaphore sema;
+    struct semaphore sema2;
+    struct semaphore sema_wait;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     int64_t wakeuptime;                     /* ALARM CLOCK : TIME TO WAKE UP */

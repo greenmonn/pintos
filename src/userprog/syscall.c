@@ -5,6 +5,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
+
 
 #define ARG_MAX 3
 
@@ -12,6 +14,17 @@ static void syscall_handler (struct intr_frame *);
 
 struct lock filesys_lock;
 
+void 
+filesys_lock_acquire (void)
+{
+    lock_acquire(&filesys_lock);
+}
+
+void
+filesys_lock_release (void)
+{
+    lock_release(&filesys_lock);
+}
 void
 syscall_init (void) 
 { 
@@ -22,9 +35,26 @@ syscall_init (void)
 
 bool
 userptr_valid(char* ptr) {
-    int flag = 1;
-    if (!ptr || !is_user_vaddr(ptr) || !pagedir_get_page(thread_current()->pagedir, ptr))
-        flag = 0;
+    //printf("userptr_valid\n");
+    bool flag = true;
+    if (!ptr || !is_user_vaddr(ptr)) 
+        flag = false;
+    else if (is_user_vaddr(ptr) && pagedir_get_page(thread_current()->pagedir, ptr) == NULL) 
+    {
+        //printf("case : page in supp\n");
+        flag = false;
+        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));;
+       // printf("ptr : %x\n", ptr);
+        if (pg != NULL) { //Page is in supplemental page table!
+
+            //printf("page lookup : %x\n", pg);
+            //install page HERE to prevent page fault while accessing file system..
+            flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+            ////printf("install success:%d, pg %d, userptr %x\n");
+            //printf("suppl_page installed in syscall : %x %x\n", pg, ptr);
+
+        }
+    }
 
     return flag;
 }
@@ -161,7 +191,7 @@ syscall_handler (struct intr_frame *f)
  * no file system repair tool
  */
 int create(const char *name, unsigned size) {
-    if (!userptr_valid(name))
+    if (!userbuf_valid(name, strlen(name)+1))
         exit(-1);
     if (strlen(name) > 14) {
         return 0;
@@ -183,12 +213,13 @@ int remove(const char *file) {
 
 
 int open(const char *name) {
-    if (!userptr_valid(name))
+    if (!userbuf_valid(name, strlen(name)+1)) {
+        //printf("string ptr %x is not valid\n", name);
         exit(-1);
-   char* kername = pagedir_get_page(thread_current()->pagedir, name);
+    }
    int fd;
    lock_acquire(&filesys_lock);
-   struct file* openfile = filesys_open((const char*)kername);
+   struct file* openfile = filesys_open((const char*)name);
    if (!openfile) {
        return -1;
    }
@@ -203,7 +234,7 @@ int open(const char *name) {
    
    fe->name = openfile;
    fd = fe->fd = thread_current()->fd_num++;
-   strlcpy(fe->filename, kername, strlen(kername)+1);
+   strlcpy(fe->filename, name, strlen(name)+1);
    list_push_back(file_list, &fe->elem);
    lock_release(&filesys_lock);
    return fd;
@@ -261,10 +292,13 @@ void exit(int status) {
 }
 
 int exec(const char *cmd_line) {
-	char *kerbuf = pagedir_get_page(thread_current()->pagedir, cmd_line);
-    lock_acquire(&filesys_lock);
-	int pid = process_execute(kerbuf);
-	lock_release(&filesys_lock);
+	//char *kerbuf = pagedir_get_page(thread_current()->pagedir, cmd_line);
+    if (!userbuf_valid(cmd_line, strlen(cmd_line)+1)) 
+        exit(-1);
+    //lock_acquire(&filesys_lock);
+	int pid = process_execute(cmd_line);
+    //printf("pid %d\n", pid);
+	//lock_release(&filesys_lock);
 	return pid;
 }
 
@@ -294,9 +328,10 @@ int write(int fd, const void *buffer, unsigned size)
     if (!userbuf_valid(buffer, size)) {
         exit(-1);
     }
-    char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
+    //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
+    const char *buf = (const char*)buffer;
     if (fd == STDOUT_FILENO) {
-        putbuf((const char*) kerbuf, size);
+        putbuf((const char*) buf, size);
         return size;
     }
 
@@ -315,7 +350,7 @@ int write(int fd, const void *buffer, unsigned size)
 
     if (file_to_write) {
         //lock_acquire(thread_current()->filesys_lock);
-        int ret = file_write(file_to_write, (const void*)kerbuf, size);
+        int ret = file_write(file_to_write, (const void*)buffer, size);
         //lock_release(thread_current()->filesys_lock);
         lock_release(&filesys_lock);
 		return ret;
@@ -330,12 +365,13 @@ int read(int fd, void *buffer, unsigned size)
     if(!userbuf_valid(buffer, size)) {
         exit(-1);
     }
-    char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
+    //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
 
+    char *buf = (char *)buffer;
     if (fd == STDIN_FILENO) {
         int index = 0;
         for (index = 0 ; index < size ; index++) {
-            kerbuf[index] = input_getc();
+            buf[index] = input_getc();
         }
         return index;
     }
@@ -345,7 +381,7 @@ int read(int fd, void *buffer, unsigned size)
     struct file *file_to_read = find_file_desc(fd);
     if(file_to_read) {
         //lock_acquire(thread_current()->filesys_lock);
-        int ret =  file_read(file_to_read, (void*)kerbuf, (int)size);
+        int ret =  file_read(file_to_read, (void *)buffer, (int)size);
         //lock_release(thread_current()->filesys_lock);
         lock_release(&filesys_lock);
 		return ret;
