@@ -35,29 +35,69 @@ syscall_init (void)
 
 bool
 userptr_valid(char* ptr) {
-    //printf("userptr_valid\n");
-    bool flag = true;
+    bool flag;
     if (!ptr || !is_user_vaddr(ptr)) 
         flag = false;
     else if (is_user_vaddr(ptr) && pagedir_get_page(thread_current()->pagedir, ptr) == NULL) 
     {
-        //printf("case : page in supp\n");
         flag = false;
-        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));;
-       // printf("ptr : %x\n", ptr);
+        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
         if (pg != NULL) { //Page is in supplemental page table!
 
-            //printf("page lookup : %x\n", pg);
             //install page HERE to prevent page fault while accessing file system..
             flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-            ////printf("install success:%d, pg %d, userptr %x\n");
-            //printf("suppl_page installed in syscall : %x %x\n", pg, ptr);
 
         }
     }
-
+    else if (pagedir_get_page(thread_current()->pagedir, ptr) != NULL)
+    {   //user virtual address which is not null, and in page table
+        //Here it can be in a code segment
+        flag = true;        
+    } 
+    else {
+        flag = false;
+    }
     return flag;
 }
+
+bool
+userptr_valid_no_code(char* ptr) {
+    bool flag;
+    if (!ptr || !is_user_vaddr(ptr)) 
+        flag = false;
+    else if (is_user_vaddr(ptr) && pagedir_get_page(thread_current()->pagedir, ptr) == NULL) 
+    {
+        flag = false;
+        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+        if (pg != NULL) { //Page is in supplemental page table!
+
+            //install page HERE to prevent page fault while accessing file system..
+            flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+
+        }
+    }
+    else if (pagedir_get_page(thread_current()->pagedir, ptr) != NULL)
+    {   //user virtual address which is not null, and in page table
+        //Check whether it's a code segment
+        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+        if (pg != NULL) {
+            if (pg->is_code_seg == true) {
+                //printf("here?\n");
+                flag = false;
+            }
+            else
+                flag = true;
+        }
+        else {
+            flag = true;
+        }
+    } 
+    else {
+        flag = false;
+    }
+    return flag;
+}
+
 
 bool
 userbuf_valid(char* ptr, int bufsize) {
@@ -65,6 +105,19 @@ userbuf_valid(char* ptr, int bufsize) {
     int i;
     for(i=0; i<bufsize; i++) {
         if (!userptr_valid(ptr+i)) {
+            flag = 0;
+            break;
+        }
+    }
+    return flag;
+}
+
+bool
+userbuf_valid_no_code(char* ptr, int bufsize) {
+    int flag = 1;
+    int i;
+    for(i=0; i<bufsize; i++) {
+        if (!userptr_valid_no_code(ptr+i)) {
             flag = 0;
             break;
         }
@@ -325,7 +378,7 @@ char *find_file_name(int fd) {
 
 int write(int fd, const void *buffer, unsigned size)
 {
-    if (!userbuf_valid(buffer, size)) {
+    if (!userbuf_valid_no_code(buffer, size)) {
         exit(-1);
     }
     //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
@@ -362,9 +415,11 @@ int write(int fd, const void *buffer, unsigned size)
 
 int read(int fd, void *buffer, unsigned size)
 {
-    if(!userbuf_valid(buffer, size)) {
+    if(!userbuf_valid_no_code(buffer, size)) {
         exit(-1);
     }
+    //TODO : deny buffer pointing code segment..
+    //printf("user buffer addr %x\n", buffer);
     //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
 
     char *buf = (char *)buffer;
@@ -377,6 +432,7 @@ int read(int fd, void *buffer, unsigned size)
     }
 
     //read from file
+    //printf("System call read\n");
 	lock_acquire(&filesys_lock);
     struct file *file_to_read = find_file_desc(fd);
     if(file_to_read) {

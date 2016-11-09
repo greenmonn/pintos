@@ -218,7 +218,7 @@ page_fault (struct intr_frame *f)
       //printf("suppl. page addr %x\n", pg);
       //success = install_suppl_page(supp, pg, upage);
       //printf("File install success\n");
-      //printf("success : %d\n", success);
+      //printf("user vaddr page fault : %x\n", fault_addr);
       size_t page_read_bytes;
       size_t page_zero_bytes;
       //int readbytes;

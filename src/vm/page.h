@@ -22,6 +22,7 @@ struct page
     enum page_location location;
     struct file *file;
     bool writable;
+    bool is_code_seg;
     int32_t ofs;
     int page_read_bytes;
 };

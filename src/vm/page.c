@@ -31,6 +31,7 @@ page_set_file(struct hash *pages, struct page *page_, struct file *file_,int32_t
     page_->ofs = ofs_;
     page_->writable = writable_;
     page_->page_read_bytes = page_read_bytes_;
+    page_->is_code_seg = false;
 }
 // Later we'll get frame and read the file then install to the physical memory.
 

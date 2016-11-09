@@ -405,7 +405,7 @@ static bool setup_stack (void **esp, char *f_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
+                          bool writable, int flags);
 int calc_argc (char* string);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
@@ -469,12 +469,14 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
 
   /* Open executable file. */
   file = filesys_open (prog_name);
+
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", prog_name);
       goto done; 
     }
 
+  //file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -538,7 +540,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, writable, phdr.p_flags))
                 goto done;
             }
           else
@@ -634,7 +636,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    or disk read error occurs. */
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+              uint32_t read_bytes, uint32_t zero_bytes, bool writable, int flags) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
@@ -660,6 +662,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       else {
           struct page *new_page = make_page(upage, FILE);
           page_set_file(thread_current ()->suppl_pages, new_page, file, ofs_now, writable, page_read_bytes);
+          if (flags & PF_X == PF_X) //still ambiguous : executable = code segment?
+            new_page->is_code_seg = true;
       }
       //printf("set supplemental page - %x %x %x\n", upage, thread_current()->suppl_pages, new_page);
 
