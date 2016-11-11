@@ -112,7 +112,11 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
     {
       ASSERT ((*pte & PTE_P) == 0);
       *pte = pte_create_user (kpage, writable);
-      return true;
+      struct frame * fr = frame_find(kpage);
+	  if (fr != NULL) {
+	  	set_frame(fr,pte);
+	  }
+	  return true;
     }
   else
     return false;

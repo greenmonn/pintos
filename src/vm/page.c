@@ -3,6 +3,7 @@
 #include "page.h"
 #include "threads/thread.h"
 #include "threads/malloc.h"
+#include "threads/pte.h"
 #include "userprog/syscall.h"
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
@@ -101,7 +102,7 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 int
-install_suppl_page(struct hash *pages, struct page *pg, void *upage)
+install_suppl_page(struct hash *pages, struct page *pg, void *upage) 
 {
     uint8_t *kpage;
     size_t page_read_bytes;

@@ -1,5 +1,6 @@
 #include "frame.h"
 #include "threads/vaddr.h"
+#include "threads/pte.h"
 
 struct list frame_table;
 
@@ -31,10 +32,10 @@ frame_alloc(bool zero)
 {
     void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
     if (!kaddr) {
-		//void *evicted_addr = frame_evict()
-		//swap_out(&evicted_addr);
-		//frame_free(&evicted_addr);
-		//kaddr = evicted_addr;
+		void *evicted_addr = frame_evict();
+		swap_out(&evicted_addr);
+		frame_free(&evicted_addr);
+		kaddr = evicted_addr;
 	}
 	struct frame *new_fr = make_frame(vtop(kaddr));
     list_push_back(&frame_table, &new_fr->elem);
@@ -77,11 +78,12 @@ frame_evict()
 	while (!list_empty(&frame_table)) {
 		e = list_pop_front(&frame_table);
 		struct frame *fr = list_entry(e, struct frame, elem);
+		printf(fr->pte != NULL);
 		if (fr->pte != NULL && (*(fr->pte) & PTE_D) != 0) {
-			(*(fr->pte) & PTE_D) = 0;
+			*(fr->pte) |=  PTE_D;
 			list_push_back(&frame_table, e);
 		} else if (fr->pte != NULL && (*fr->pte & PTE_A) != 0) {
-			(*(fr->pte) & PTE_A) =0;
+			*(fr->pte) |= PTE_A;
 			list_push_back(&frame_table, e);
 		} else {
 			kaddr = ptov(fr->addr);
