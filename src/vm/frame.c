@@ -78,12 +78,13 @@ frame_evict()
 	while (!list_empty(&frame_table)) {
 		e = list_pop_front(&frame_table);
 		struct frame *fr = list_entry(e, struct frame, elem);
-		printf(fr->pte != NULL);
+		bool temp = fr->pte != NULL;
+		printf("%b",temp);
 		if (fr->pte != NULL && (*(fr->pte) & PTE_D) != 0) {
-			*(fr->pte) |=  PTE_D;
+			*(fr->pte) &= ~PTE_D;
 			list_push_back(&frame_table, e);
-		} else if (fr->pte != NULL && (*fr->pte & PTE_A) != 0) {
-			*(fr->pte) |= PTE_A;
+		} else if (fr->pte != NULL && (*(fr->pte) & PTE_A) != 0) {
+			*(fr->pte) &= ~PTE_A;
 			list_push_back(&frame_table, e);
 		} else {
 			kaddr = ptov(fr->addr);
