@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include "vm/frame.h"
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"

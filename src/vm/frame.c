@@ -79,7 +79,9 @@ frame_evict()
 		e = list_pop_front(&frame_table);
 		struct frame *fr = list_entry(e, struct frame, elem);
 		bool temp = fr->pte != NULL;
-		printf("%b",temp);
+		if (temp) printf("true\n");
+		else printf("false\n");
+		bool temp1 = (*(fr->pte) & PTE_D != 0);
 		if (fr->pte != NULL && (*(fr->pte) & PTE_D) != 0) {
 			*(fr->pte) &= ~PTE_D;
 			list_push_back(&frame_table, e);
