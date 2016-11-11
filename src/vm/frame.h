@@ -20,5 +20,6 @@ void set_frame(struct frame *fr, uint32_t *pte);
 void frame_table_init(void);
 void * frame_alloc(bool zero);
 void frame_free();
+void * frame_evict();
 
 #endif /* vm/frame.h */

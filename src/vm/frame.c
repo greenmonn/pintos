@@ -30,7 +30,13 @@ void *
 frame_alloc(bool zero)
 {
     void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
-    struct frame *new_fr = make_frame(vtop(kaddr));
+    if (!kaddr) {
+		//void *evicted_addr = frame_evict()
+		//swap_out(&evicted_addr);
+		//frame_free(&evicted_addr);
+		//kaddr = evicted_addr;
+	}
+	struct frame *new_fr = make_frame(vtop(kaddr));
     list_push_back(&frame_table, &new_fr->elem);
     return kaddr;
 }
@@ -61,6 +67,28 @@ frame_free(void *kaddr)
     list_remove(&fr_to_free->elem);
     //printf("remove success");
     free(fr_to_free);
+}
+
+void *
+frame_evict() 
+{
+	struct list_elem *e;
+	void * kaddr;
+	while (!list_empty(&frame_table)) {
+		e = list_pop_front(&frame_table);
+		struct frame *fr = list_entry(e, struct frame, elem);
+		if (fr->pte != NULL && (*(fr->pte) & PTE_D) != 0) {
+			(*(fr->pte) & PTE_D) = 0;
+			list_push_back(&frame_table, e);
+		} else if (fr->pte != NULL && (*fr->pte & PTE_A) != 0) {
+			(*(fr->pte) & PTE_A) =0;
+			list_push_back(&frame_table, e);
+		} else {
+			kaddr = ptov(fr->addr);
+			break;
+		}
+	}
+	return kaddr; 
 }
 
 //Keep track of user pages.. later we'll use frame table to set a policy to evict frames and install new frame though pool is full!
