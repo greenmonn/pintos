@@ -176,6 +176,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                     return 0;
                     //exit(-1);
                 }
+				pg->location = FRAME;
                 //printf("4");
 
                 return 1;

@@ -55,6 +55,7 @@ frame_alloc(bool zero)
 		struct page * evicted_page = page_lookup(thread_current()->suppl_pages, pg_round_down(*(evicted_fr->pte)));
 		evicted_page->location = SWAP;
 		evicted_page->swap_index = swap_index;
+		evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
 		frame_free(&evicted_addr);
 	}
 	struct frame *new_fr = make_frame(vtop(kaddr));
