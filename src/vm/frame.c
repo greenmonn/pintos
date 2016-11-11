@@ -1,4 +1,6 @@
 #include "frame.h"
+#include "swap.h"
+#include "page.h"
 #include "threads/vaddr.h"
 #include "threads/pte.h"
 
@@ -10,7 +12,7 @@ make_frame(void *addr)
     struct frame *fr = malloc(sizeof(struct frame));
     if (fr != NULL) {
         fr->addr = addr;
-        //fr->pte = pte;
+        fr->pte = NULL;
     }
     return fr;
 }
@@ -27,21 +29,6 @@ frame_table_init(void)
     list_init(&frame_table);
 }
 
-void *
-frame_alloc(bool zero)
-{
-    void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
-    if (!kaddr) {
-		void *evicted_addr = frame_evict();
-		swap_out(&evicted_addr);
-		frame_free(&evicted_addr);
-		kaddr = evicted_addr;
-	}
-	struct frame *new_fr = make_frame(vtop(kaddr));
-    list_push_back(&frame_table, &new_fr->elem);
-    return kaddr;
-}
-
 struct frame *
 frame_find(void *kaddr)
 {
@@ -55,6 +42,24 @@ frame_find(void *kaddr)
         
     }
     return NULL;
+}
+void *
+frame_alloc(bool zero)
+{	
+    void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
+    if (!kaddr) {
+		void *evicted_addr = frame_evict();
+		size_t swap_index = swap_out(&evicted_addr);
+		struct frame * evicted_fr = frame_find(evicted_addr);
+		kaddr = evicted_addr;
+		struct page * evicted_page = page_lookup(thread_current()->suppl_pages, pg_round_down(*(evicted_fr->pte)));
+		evicted_page->location = SWAP;
+		evicted_page->swap_index = swap_index;
+		frame_free(&evicted_addr);
+	}
+	struct frame *new_fr = make_frame(vtop(kaddr));
+    list_push_back(&frame_table, &new_fr->elem);
+    return kaddr;
 }
 
 void 
@@ -72,16 +77,13 @@ frame_free(void *kaddr)
 
 void *
 frame_evict() 
-{
+{	
 	struct list_elem *e;
 	void * kaddr;
 	while (!list_empty(&frame_table)) {
 		e = list_pop_front(&frame_table);
 		struct frame *fr = list_entry(e, struct frame, elem);
-		bool temp = fr->pte != NULL;
-		if (temp) printf("true\n");
-		else printf("false\n");
-		bool temp1 = (*(fr->pte) & PTE_D != 0);
+
 		if (fr->pte != NULL && (*(fr->pte) & PTE_D) != 0) {
 			*(fr->pte) &= ~PTE_D;
 			list_push_back(&frame_table, e);

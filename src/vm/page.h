@@ -25,6 +25,7 @@ struct page
     bool is_code_seg;
     int32_t ofs;
     int page_read_bytes;
+	size_t swap_index;
 };
 
 struct page *make_page(void *uaddr, enum page_location location);

@@ -1,6 +1,7 @@
 /* page.c */
 
 #include "page.h"
+#include "swap.h"
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include "threads/pte.h"
@@ -126,6 +127,17 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 return 1;
                 break; //Never reached
             case SWAP:
+				kpage = frame_alloc(false);
+				if (kpage == NULL) return 0;
+				swap_in(pg->swap_index, frame_find(kpage));
+				pg->location = FRAME;
+				pg->swap_index = -1;
+				if (!install_page(upage, kpage, pg->writable))
+				{
+					frame_free(kpage);
+					return 0;
+				}
+				return 1;
                 break;
             case FRAME:
                 break;
