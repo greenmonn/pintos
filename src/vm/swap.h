@@ -11,12 +11,8 @@
 #define SWAP_FREE 0
 #define SWAP_IN_USE 1
 
-struct disk *swap_disk;
-struct bitmap *swap_table;
-struct lock *swap_lock;
-
 void swap_init (void);
-size_t swap_out (void* frame);
-void swap_in (size_t used_slot, void* frame);
+size_t swap_out (void *frame);
+void swap_in (size_t used_slot, void *frame);
 
 #endif
