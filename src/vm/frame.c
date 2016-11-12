@@ -42,6 +42,7 @@ frame_find(void *kaddr)
     {
         struct frame *fr = list_entry(e, struct frame, elem);
         if (fr->addr == addr) {
+            printf("find addr : %x\n", fr->addr);
             return fr;
         }
         
@@ -54,27 +55,26 @@ frame_alloc(bool zero)
     lock_acquire(&frame_lock);
     void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
     printf("pallod_get_page : %x\n", kaddr);
-    if (!kaddr) {
+    if (!kaddr) {   //Evict a frame and make it as MINE!
 		struct frame *evicted_fr = frame_evict();
         void *evicted_addr = ptov(evicted_fr->addr);
 
 
-        //printf("1\n");
-		//struct frame * evicted_fr = frame_find(evicted_addr);
-        //printf("2\n");
-		evicted_addr;
-		struct page * evicted_page = page_lookup(thread_current()->suppl_pages, evicted_fr->upage); //ERROR!!!! evicted_fr->pte is kernel virtual address.. how to find user address from frame?
+		struct page * evicted_page = page_lookup((evicted_fr->owner)->suppl_pages, evicted_fr->upage);
         //printf("3\n");
 
         printf("evicted physical addr is, %x\n", pg_round_down(*(evicted_fr->pte)));
         printf("evicted user addr is, %x\n", evicted_fr->upage);
-        printf("supp page : %x\n", evicted_page);
+        printf("supp page of evicted page : %x\n", evicted_page);
         printf("supp page is in %d\n", evicted_page->location);
-		
+
+       
+    pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
 		size_t swap_index = swap_out(evicted_addr);
         printf("evicted supp page : %x\n", evicted_page);
         printf("current location : %d\n", evicted_page->location);
         if(evicted_page != NULL) {
+
             evicted_page->location = SWAP;
             evicted_page->swap_index = swap_index;
             evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
@@ -91,6 +91,7 @@ frame_alloc(bool zero)
         kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
     }
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
+    printf("make_frame : %s\n", thread_current()->name);
     list_push_back(&frame_table, &new_fr->elem);
 
     lock_release(&frame_lock);
@@ -103,7 +104,7 @@ frame_free(void *kaddr) //delete frame from list + free the frame!
     palloc_free_page(kaddr);
 
     struct frame *fr_to_free = frame_find(kaddr);
-    pagedir_clear_page(fr_to_free->owner->pagedir, fr_to_free->upage);
+    //pagedir_clear_page(fr_to_free->owner->pagedir, fr_to_free->upage);
     //printf("here?");
     list_remove(&fr_to_free->elem);
     //printf("remove success");

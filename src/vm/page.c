@@ -99,6 +99,7 @@ install_page (void *upage, void *kpage, bool writable)
     //printf("upage already installed to %x\n", pagedir_get_page(t->pagedir, upage));
     //printf("kpage : %x\n", kpage);
     //
+    printf("install page : %x\n", upage);
     //TODO : save upage to the frame
     struct frame *fr = frame_find(kpage);
     ASSERT(fr != NULL);

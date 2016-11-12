@@ -91,7 +91,7 @@ process_execute (const char *file_name)
   }
   strlcpy (fn_copy, file_name, PGSIZE);
   char *save_ptr;
-  char* fn_copy2 = frame_alloc(false);
+  char* fn_copy2 = palloc_get_page(0);
   if (!fn_copy2) {
       palloc_free_page(fn_copy2);
       return TID_ERROR;
@@ -456,7 +456,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
   //strtok_r(NULL, " ", &save_ptr);
   
   char* save_ptr;
-  char* prog_name = frame_alloc(false);
+  char* prog_name = palloc_get_page(0);
   if (!prog_name) {
   	goto done;
   }
@@ -710,7 +710,7 @@ static bool setup_stack (void **esp, char *f_name)
 
   /* filename parse */
   if (success) { 
-      char* fn_copy = frame_alloc(false);
+      char* fn_copy = palloc_get_page(0);
       if (fn_copy == NULL){
           palloc_free_page(fn_copy);
           thread_exit();
