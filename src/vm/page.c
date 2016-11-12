@@ -2,6 +2,7 @@
 
 #include "page.h"
 #include "swap.h"
+#include "frame.h"
 #include "threads/thread.h"
 #include "threads/malloc.h"
 #include "threads/pte.h"
@@ -97,6 +98,13 @@ install_page (void *upage, void *kpage, bool writable)
 
     //printf("upage already installed to %x\n", pagedir_get_page(t->pagedir, upage));
     //printf("upage : %x\n", upage);
+    //
+    //TODO : save upage to the frame
+    struct frame *fr = frame_find(kpage);
+    if (fr != NULL) {
+        fr->upage = upage;
+    }
+
 
     return (pagedir_get_page (t->pagedir, upage) == NULL
             && pagedir_set_page (t->pagedir, upage, kpage, writable));
@@ -122,11 +130,14 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 {
                     frame_free(kpage);
                     //exit(-1);
+                    printf("install page fail\n");
                     return 0;
                 }
+                pg->location = FRAME;
                 return 1;
                 break; //Never reached
             case SWAP:
+                printf("case swap\n");
 				kpage = frame_alloc(false);
 				if (kpage == NULL) return 0;
 				swap_in(pg->swap_index, frame_find(kpage));
@@ -149,6 +160,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 //printf("1");
                 if (kpage == NULL) {
                     return 0;
+                    printf("frame_alloc fail\n");
                     //exit(-1);
                 }
                 //printf("2");
@@ -160,6 +172,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 if (file_read (pg->file, kpage, page_read_bytes) != (int) page_read_bytes) {
                     frame_free(kpage);
                     filesys_lock_release();
+                    printf("file_read fail\n");
                     return 0;
                     //exit(-1);
                 }
@@ -173,6 +186,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 {
                     //printf("install page fail?\n");
                     frame_free(kpage);
+                    printf("install page fail\n");
                     return 0;
                     //exit(-1);
                 }
@@ -186,6 +200,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
         }
     }
     else {
+        printf("pg is null\n");
         return 0;
         //exit(-1);
     }

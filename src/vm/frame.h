@@ -13,6 +13,7 @@ struct frame
     struct list_elem elem;
     void *addr; //physical memory address
     uint32_t *pte;
+    void *upage; //Installed page's User virtual address
 };
 
 struct frame *make_frame(void *addr);
@@ -20,6 +21,6 @@ void set_frame(struct frame *fr, uint32_t *pte);
 void frame_table_init(void);
 void * frame_alloc(bool zero);
 void frame_free();
-void * frame_evict();
+struct frame * frame_evict();
 
 #endif /* vm/frame.h */

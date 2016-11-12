@@ -28,7 +28,7 @@ size_t swap_out (void *frame) {
 
     size_t i;
 	for (i = 0; i<SECTORS_IN_PG; i++) {
-		disk_write(swap_disk, free_slot*SECTORS_IN_PG + i, (uint8_t *)frame + i*DISK_SECTOR_SIZE);
+		disk_write(swap_disk, free_slot*SECTORS_IN_PG + i, frame + i*DISK_SECTOR_SIZE);
 	} 
 	lock_release(&swap_lock);
 
