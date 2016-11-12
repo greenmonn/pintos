@@ -151,16 +151,7 @@ kill (struct intr_frame *f)
    can find more information about both of these in the
    description of "Interrupt 14--Page Fault Exception (#PF)" in
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
-/*
-bool
-install_page (void *upage, void *kpage, bool writable)
-{
-    struct thread *t = thread_current ();
 
-    return (pagedir_get_page (t->pagedir, upage) == NULL
-            && pagedir_set_page (t->pagedir, upage, kpage, writable));
-}
-*/
 
 bool
 is_stack_access(void *fault_addr, struct intr_frame *f)
@@ -262,7 +253,10 @@ page_fault (struct intr_frame *f)
               success = 1;
               while(success) {
                   kpage = frame_alloc(true);
+
                   if (kpage != NULL) {
+                      struct page *stk_pg = make_page(stack_end + PGSIZE*i, FRAME);
+                      page_insert(thread_current()->suppl_pages, stk_pg); 
                      success = install_page(stack_end + PGSIZE*i, kpage, true);
                      i++;
                   } 
