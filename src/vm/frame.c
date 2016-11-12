@@ -74,21 +74,21 @@ frame_alloc(bool zero)
         evicted_page->location = SWAP;
         evicted_page->swap_index = swap_index;
         evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-        frame_free(&evicted_addr);
-    } else {
-        struct frame *new_fr = make_frame(vtop(kaddr));
-        list_push_back(&frame_table, &new_fr->elem);
+        frame_free(evicted_addr);
     }
+    struct frame *new_fr = make_frame(vtop(kaddr));
+    list_push_back(&frame_table, &new_fr->elem);
+
     lock_release(&frame_lock);
     return kaddr;
 }
 
 void 
-frame_free(void *kaddr)
+frame_free(void *kaddr) //delete frame from list + free the frame!
 {
     palloc_free_page(kaddr);
 
-    struct frame *fr_to_free = frame_find(vtop(kaddr));
+    struct frame *fr_to_free = frame_find(kaddr);
 
     //printf("here?");
     list_remove(&fr_to_free->elem);
@@ -115,6 +115,7 @@ frame_evict()
 		} else {
             if (fr->pte != NULL) {
 			    kaddr = ptov(fr->addr);
+                //list_push_back(&frame_table, e);
 			    break;
             }
             else {
