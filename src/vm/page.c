@@ -143,7 +143,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 printf("case swap\n");
 				kpage = frame_alloc(false);
 				if (kpage == NULL) return 0;
-				swap_in(pg->swap_index, frame_find(kpage));
+				swap_in(pg->swap_index, kpage);
 				pg->location = FRAME;
 				pg->swap_index = -1;
 				if (!install_page(upage, kpage, pg->writable))
