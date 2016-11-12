@@ -28,6 +28,7 @@
 #include "userprog/tss.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -112,11 +113,10 @@ main (void)
   serial_init_queue ();
   timer_calibrate ();
 
-#ifdef FILESYS
   /* Initialize file system. */
   disk_init ();
+  swap_init ();
   filesys_init (format_filesys);
-#endif
 
   printf ("Boot complete.\n");
   
