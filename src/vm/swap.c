@@ -1,7 +1,7 @@
 #include "swap.h"
 
 
-#define SECTORS_IN_PG PGSIZE/DISK_SECTOR_SIZE
+#define SECTORS_IN_PG (PGSIZE/DISK_SECTOR_SIZE)
 
 struct disk *swap_disk;
 struct bitmap *swap_table;

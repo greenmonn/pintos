@@ -72,12 +72,13 @@ frame_alloc(bool zero)
         printf("evicted supp page : %x\n", evicted_page);
         printf("current location : %d\n", evicted_page->location);
         evicted_page->location = SWAP;
-		evicted_page->swap_index = swap_index;
-		evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-		frame_free(&evicted_addr);
-	}
-	struct frame *new_fr = make_frame(vtop(kaddr));
-    list_push_back(&frame_table, &new_fr->elem);
+        evicted_page->swap_index = swap_index;
+        evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
+        frame_free(&evicted_addr);
+    } else {
+        struct frame *new_fr = make_frame(vtop(kaddr));
+        list_push_back(&frame_table, &new_fr->elem);
+    }
     lock_release(&frame_lock);
     return kaddr;
 }
