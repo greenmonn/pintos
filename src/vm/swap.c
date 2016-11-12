@@ -31,7 +31,7 @@ size_t swap_out (void *frame) {
 
     size_t i;
 	for (i = 0; i<SECTORS_IN_PG; i++) {
-		disk_write(swap_disk, free_slot*SECTORS_IN_PG + i, frame + i*DISK_SECTOR_SIZE);
+		disk_write(swap_disk, free_slot*SECTORS_IN_PG + i, (uint8_t *)frame + i*DISK_SECTOR_SIZE);
         printf("disk_write\n");
 	} 
 	lock_release(&swap_lock);
@@ -41,6 +41,7 @@ size_t swap_out (void *frame) {
 
 /* DISK -> MEMORY */
 void swap_in (size_t used_slot, void *frame) {
+    //printf("swap in\n");
 	lock_acquire(&swap_lock);
 	ASSERT (used_slot < disk_size(swap_disk)/SECTORS_IN_PG);
 	ASSERT (bitmap_test(swap_table, used_slot) == SWAP_IN_USE);

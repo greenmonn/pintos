@@ -8,13 +8,14 @@ struct list frame_table;
 struct lock frame_lock;
 
 struct frame *
-make_frame(void *addr)
+make_frame(void *addr, struct thread *owner)
 {
     struct frame *fr = malloc(sizeof(struct frame));
     if (fr != NULL) {
         fr->addr = addr;
         fr->pte = NULL;
         fr->upage = NULL;
+        fr->owner = owner;
     }
     return fr;
 }
@@ -89,7 +90,7 @@ frame_alloc(bool zero)
         //REtry palloc!
         kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
     }
-    struct frame *new_fr = make_frame(vtop(kaddr));
+    struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
     list_push_back(&frame_table, &new_fr->elem);
 
     lock_release(&frame_lock);
@@ -102,7 +103,7 @@ frame_free(void *kaddr) //delete frame from list + free the frame!
     palloc_free_page(kaddr);
 
     struct frame *fr_to_free = frame_find(kaddr);
-
+    pagedir_clear_page(fr_to_free->owner->pagedir, fr_to_free->upage);
     //printf("here?");
     list_remove(&fr_to_free->elem);
     //printf("remove success");

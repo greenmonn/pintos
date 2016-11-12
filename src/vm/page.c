@@ -118,7 +118,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
     uint8_t *kpage;
     size_t page_read_bytes;
     size_t page_zero_bytes;
-    //printf("install_suppl_page\n");
+   // printf("install_suppl_page\n");
     if (pg != NULL) {
         switch(pg->location) {
             case ZERO:
