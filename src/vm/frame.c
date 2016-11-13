@@ -16,6 +16,7 @@ make_frame(void *addr, struct thread *owner)
         fr->pte = NULL;
         fr->upage = NULL;
         fr->owner = owner;
+        fr->pin = true;
     }
     return fr;
 }
@@ -90,6 +91,7 @@ frame_alloc(bool zero)
 
         //REtry palloc!
         kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
+        ASSERT(evicted_addr == kaddr);
     }
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
     list_push_back(&frame_table, &new_fr->elem);
@@ -128,7 +130,7 @@ frame_evict()
 			*(fr->pte) &= ~PTE_A;
 			list_push_back(&frame_table, e);
 		} else {
-            if (fr->pte != NULL) {
+            if (fr->pte != NULL && fr->pin == false) {
 			    kaddr = ptov(fr->addr);
                 list_push_back(&frame_table, e);
 			    break;

@@ -123,6 +123,7 @@ install_page (void *upage, void *kpage, bool writable)
     ASSERT(fr != NULL);
     if (fr != NULL) { 
         fr->upage = upage;
+        fr->pin = false;
     }
     //2. Save writable value to the page
     struct page *pg = page_lookup(t->suppl_pages, upage);

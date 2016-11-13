@@ -15,6 +15,7 @@ struct frame
     uint32_t *pte;
     void *upage; //Installed page's User virtual address
     struct thread *owner;
+    bool pin;
 
 };
 
