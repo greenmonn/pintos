@@ -64,7 +64,6 @@ static void page_free_func (struct hash_elem *e, void *aux UNUSED)
         pagedir_clear_page(thread_current()->pagedir, pg->uaddr);
     } else if (pg->location == SWAP) {
 		swap_free(pg->swap_index);
-        pagedir_clear_page(thread_current()->pagedir, pg->uaddr);
 	}
     free(pg);
 }
@@ -72,6 +71,7 @@ static void page_free_func (struct hash_elem *e, void *aux UNUSED)
 void
 suppl_pages_destroy (struct hash * pages) 
 {
+    //printf("suppl_pages_destroy\n");
     hash_destroy(pages, page_free_func);
 }
 
@@ -120,11 +120,12 @@ install_page (void *upage, void *kpage, bool writable)
 
     //1. Save upage to the frame
     struct frame *fr = frame_find(kpage);
-    ASSERT(fr != NULL);
+    //ASSERT(fr != NULL);
     if (fr != NULL) { 
         fr->upage = upage;
-        fr->pin = false;
+        //fr->pin = false; WE'll do it in pagedir_set_page
     }
+    ASSERT(fr != NULL);
     //2. Save writable value to the page
     struct page *pg = page_lookup(t->suppl_pages, upage);
     if (pg != NULL) {
@@ -142,6 +143,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
     uint8_t *kpage;
     size_t page_read_bytes;
     size_t page_zero_bytes;
+    struct frame *newfr;
     if (pg != NULL) {
         switch(pg->location) {
             case ZERO:
@@ -157,6 +159,8 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                     return 0;
                 }
                 pg->location = FRAME;
+                newfr = frame_find(kpage);
+                newfr->pin = false;
                 return 1;
                 break; //Never reached
             case SWAP:
@@ -170,9 +174,13 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
 					frame_free(kpage);
 					return 0;
 				}
+
+                newfr = frame_find(kpage);
+                newfr->pin = false;
 				return 1;
                 break;
             case FRAME:
+                return 0;
                 break;
             case FILE: //Lazy Loading!
                 filesys_lock_acquire();
@@ -203,6 +211,8 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 }
 				pg->location = FRAME;
 
+                newfr = frame_find(kpage);
+                newfr->pin = false;
                 return 1;
 
                 break;

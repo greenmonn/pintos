@@ -20,6 +20,7 @@
 #include "threads/synch.h"
 #include "userprog/syscall.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
@@ -708,10 +709,13 @@ static bool setup_stack (void **esp, char *f_name)
       
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
 
-      if (success)
+      if (success) {
         *esp = PHYS_BASE;
+        struct frame *fr = frame_find(kpage);
+        fr->pin = false;
+      }
       else
-        palloc_free_page (kpage);
+        frame_free(kpage);
     }
 
   /* filename parse */
