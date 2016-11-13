@@ -94,14 +94,20 @@ merge (void)
         if (*mp[i] < *mp[min])
           min = i;
 
+      //printf("Found smallest value : %d\n", min);
+
       /* Append value to buf2. */
       *op++ = *mp[min];
+
+      //printf("Append value to buf2 : op %x\n", op);
 
       /* Advance merge pointer.
          Delete this chunk from the set if it's emptied. */ 
       if ((++mp[min] - buf1) % CHUNK_SIZE == 0)
         mp[min] = mp[--mp_left]; 
+
     }
+  //printf("Merge finish?\n");
 }
 
 static void
