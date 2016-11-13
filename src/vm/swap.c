@@ -50,3 +50,9 @@ void swap_in (size_t used_slot, void *frame) {
 	}
 	lock_release(&swap_lock);
 }
+
+void swap_free (size_t used_slot) {
+	lock_acquire(&swap_lock);
+	bitmap_set_multiple(swap_table,used_slot,1, SWAP_FREE);
+	lock_release(&swap_lock);
+}

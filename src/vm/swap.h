@@ -14,5 +14,5 @@
 void swap_init (void);
 size_t swap_out (void *frame);
 void swap_in (size_t used_slot, void *frame);
-
+void swap_free (size_t used_slot);
 #endif

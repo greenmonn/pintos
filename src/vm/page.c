@@ -62,7 +62,10 @@ static void page_free_func (struct hash_elem *e, void *aux UNUSED)
     {
         frame_free(pagedir_get_page(thread_current()->pagedir, pg->uaddr));
         pagedir_clear_page(thread_current()->pagedir, pg->uaddr);
-    }
+    } else if (pg->location == SWAP) {
+		swap_free(pg->swap_index);
+        pagedir_clear_page(thread_current()->pagedir, pg->uaddr);
+	}
     free(pg);
 }
 

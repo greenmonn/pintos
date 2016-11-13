@@ -82,8 +82,12 @@ frame_alloc(bool zero)
             new_swap_page->swap_index = swap_index;
             page_insert(thread_current()->suppl_pages, new_swap_page);
         }
-        frame_free(evicted_addr);
-        
+
+		palloc_free_page(evicted_addr);
+        list_remove(&evicted_fr->elem);
+
+        free(evicted_fr);
+
         //REtry palloc!
         kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
     }
@@ -97,11 +101,13 @@ frame_alloc(bool zero)
 void 
 frame_free(void *kaddr) //delete frame from list + free the frame!
 {
+	lock_acquire(&frame_lock);
     palloc_free_page(kaddr);
 
     struct frame *fr_to_free = frame_find(kaddr);
     list_remove(&fr_to_free->elem);
     free(fr_to_free);
+	lock_release(&frame_lock);
 }
 
 struct frame *
