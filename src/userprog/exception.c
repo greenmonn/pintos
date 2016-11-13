@@ -186,7 +186,7 @@ page_fault (struct intr_frame *f)
      be assured of reading CR2 before it changed). */
   intr_enable ();
 
-  printf("Entered page_fault(%x)\n", fault_addr);
+  //printf("Entered page_fault(%x)\n", fault_addr);
   /* Count page faults. */
   page_fault_cnt++;
 
@@ -279,8 +279,8 @@ page_fault (struct intr_frame *f)
       
       else {
         success = install_suppl_page(supp, pg, upage);
-        printf("success : %d\n", success);
-        printf("pg is %x, faulted addr is %x\n", pg, fault_addr);
+        //printf("success : %d\n", success);
+        //printf("pg is %x, faulted addr is %x\n", pg, fault_addr);
       }
       /*
       if (pg != NULL) {
@@ -351,6 +351,7 @@ page_fault (struct intr_frame *f)
       */
 
       if (success != 1) {
+          //printf("We exit on page_fault : fault_addr %x\n", fault_addr);
           exit(-1);
       }
 

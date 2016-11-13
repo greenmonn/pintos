@@ -42,7 +42,8 @@ frame_find(void *kaddr)
     {
         struct frame *fr = list_entry(e, struct frame, elem);
         if (fr->addr == addr) {
-            printf("find addr : %x\n", fr->addr);
+            //printf("find addr : %x\n", fr->addr);
+
             return fr;
         }
         
@@ -54,25 +55,20 @@ frame_alloc(bool zero)
 {	
     lock_acquire(&frame_lock);
     void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
-    printf("pallod_get_page : %x\n", kaddr);
     if (!kaddr) {   //Evict a frame and make it as MINE!
 		struct frame *evicted_fr = frame_evict();
         void *evicted_addr = ptov(evicted_fr->addr);
+        //printf("CHOSEN VICTOM : on %x mapped to UADDR %x\n", evicted_addr, evicted_fr->upage);
 
-
+        //printf("evicted frame's OWNER THREAD is %x, %s\n", (evicted_fr->owner), evicted_fr->owner->name);
+      
 		struct page * evicted_page = page_lookup((evicted_fr->owner)->suppl_pages, evicted_fr->upage);
-        //printf("3\n");
 
-        printf("evicted physical addr is, %x\n", pg_round_down(*(evicted_fr->pte)));
-        printf("evicted user addr is, %x\n", evicted_fr->upage);
-        printf("supp page of evicted page : %x\n", evicted_page);
-        printf("supp page is in %d\n", evicted_page->location);
+        //printf("We have a supplemental page : %x\n", evicted_page); 
 
-       
-    pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
+
+       pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
 		size_t swap_index = swap_out(evicted_addr);
-        printf("evicted supp page : %x\n", evicted_page);
-        printf("current location : %d\n", evicted_page->location);
         if(evicted_page != NULL) {
 
             evicted_page->location = SWAP;
@@ -80,6 +76,7 @@ frame_alloc(bool zero)
             evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
         } 
         else {
+            //printf("NO SUPP PAGE : Make new one!\n");
             struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
             new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
             new_swap_page->swap_index = swap_index;
@@ -91,7 +88,6 @@ frame_alloc(bool zero)
         kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
     }
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
-    printf("make_frame : %s\n", thread_current()->name);
     list_push_back(&frame_table, &new_fr->elem);
 
     lock_release(&frame_lock);
@@ -104,17 +100,15 @@ frame_free(void *kaddr) //delete frame from list + free the frame!
     palloc_free_page(kaddr);
 
     struct frame *fr_to_free = frame_find(kaddr);
-    //pagedir_clear_page(fr_to_free->owner->pagedir, fr_to_free->upage);
-    //printf("here?");
     list_remove(&fr_to_free->elem);
-    //printf("remove success");
     free(fr_to_free);
 }
 
 struct frame *
 frame_evict() 
 {	
-	struct list_elem *e;
+	//printf("while FRAME_ALLOC, frame is full, so EVICT ONE!\n");
+    struct list_elem *e;
 	void * kaddr;
     struct frame *fr = NULL;
 	while (!list_empty(&frame_table)) {
@@ -139,7 +133,6 @@ frame_evict()
 		}
 	}
     ASSERT(fr != NULL);
-    printf("frame evicted : %x\n", kaddr);
 	return fr; 
 }
 

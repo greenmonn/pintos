@@ -142,6 +142,7 @@ start_process (void *f_name)
   if_.eflags = FLAG_IF | FLAG_MBS;
   
 
+  //printf("EXEC new process : %x, %s\n", thread_current(), thread_current()->name);
   //printf("before load\n");
   filesys_lock_acquire();
   success = load (f_name, &if_.eip, &if_.esp);
@@ -276,6 +277,9 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+
+
+  suppl_pages_destroy(curr->suppl_pages);
   pd = curr->pagedir;
   if (pd != NULL) 
     {
@@ -290,6 +294,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+
 
   /* FREE FILE DESCRIPTORS */
   struct list_elem *e;

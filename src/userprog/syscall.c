@@ -81,8 +81,8 @@ userptr_valid_no_code(char* ptr) {
         //Check whether it's a code segment
         struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
         if (pg != NULL) {
-            if (pg->is_code_seg == true) {
-                //printf("here?\n");
+            if (pg->writable == false) {
+                //printf("cannot write to this buffer\n");
                 flag = false;
             }
             else
@@ -336,9 +336,8 @@ void exit(int status) {
         child->exit = 1;
 
     }
+    //printf("called exit on thread %x : %s\n", thread_current(), thread_current()->name);
 	thread_current()->proc_status = status;
-//	printf("%s: exit(%d)\n", thread_current()->name,status);
-//    sema_up(&thread_current()->parent->sema);        
 	thread_exit();
     
 
@@ -378,7 +377,7 @@ char *find_file_name(int fd) {
 
 int write(int fd, const void *buffer, unsigned size)
 {
-    if (!userbuf_valid_no_code(buffer, size)) {
+    if (!userbuf_valid(buffer, size)) {
         exit(-1);
     }
     //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);

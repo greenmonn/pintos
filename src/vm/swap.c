@@ -9,7 +9,6 @@ struct lock swap_lock;
 
 void swap_init(void) {
 	swap_disk = disk_get(1,1);
-    printf("swap disk on %x\n", swap_disk);
     //SWAP TABLE : 1 bit = 1 page?
     //swap_table = bitmap_create (disk_size(swap_disk)*DISK_SECTOR_SIZE/PGSIZE);
 	swap_table = bitmap_create (disk_size(swap_disk)/SECTORS_IN_PG);
@@ -22,17 +21,13 @@ void swap_init(void) {
 
 /* MEMORY -> DISK */
 size_t swap_out (void *frame) {
-    printf("in swap_out\n");
 	lock_acquire(&swap_lock);
-    printf("lock_acquired in swap_out\n");
 	size_t free_slot = bitmap_scan_and_flip(swap_table, 0, 1, SWAP_FREE);
-    printf("free_slot : %d\n", free_slot);	
 	ASSERT (free_slot != BITMAP_ERROR);
 
     size_t i;
 	for (i = 0; i<SECTORS_IN_PG; i++) {
 		disk_write(swap_disk, free_slot*SECTORS_IN_PG + i, (uint8_t *)frame + i*DISK_SECTOR_SIZE);
-        printf("disk_write\n");
 	} 
 	lock_release(&swap_lock);
 

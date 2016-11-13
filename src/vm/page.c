@@ -20,6 +20,7 @@ make_page(void *uaddr, enum page_location place)
     if (pg != NULL) {
         pg->uaddr = uaddr;
         pg->location = place;
+        pg->is_code_seg = false;
     }
     return pg;
 }
@@ -54,6 +55,23 @@ suppl_pages_create (void)
     return pages;
 }
 
+static void page_free_func (struct hash_elem *e, void *aux UNUSED)
+{
+    struct page *pg = hash_entry(e, struct page, elem);
+    if (pg->location == FRAME)
+    {
+        frame_free(pagedir_get_page(thread_current()->pagedir, pg->uaddr));
+        pagedir_clear_page(thread_current()->pagedir, pg->uaddr);
+    }
+    free(pg);
+}
+
+void
+suppl_pages_destroy (struct hash * pages) 
+{
+    hash_destroy(pages, page_free_func);
+}
+
 /* Functions for Hashing. */
 
 unsigned 
@@ -75,7 +93,8 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUS
 void
 page_insert(struct hash *pages, struct page *page)
 {
-    hash_insert(pages, &page->elem);
+    hash_replace(pages, &page->elem);
+    //not allow duplication!
 }
 
 /* Returns the page containing the given virtual address,
@@ -96,16 +115,16 @@ install_page (void *upage, void *kpage, bool writable)
 {
     struct thread *t = thread_current();
 
-    //printf("upage already installed to %x\n", pagedir_get_page(t->pagedir, upage));
-    //printf("kpage : %x\n", kpage);
-    //
-    printf("install page : %x\n", upage);
-    //TODO : save upage to the frame
+    //1. Save upage to the frame
     struct frame *fr = frame_find(kpage);
     ASSERT(fr != NULL);
-    if (fr != NULL) {
-        
+    if (fr != NULL) { 
         fr->upage = upage;
+    }
+    //2. Save writable value to the page
+    struct page *pg = page_lookup(t->suppl_pages, upage);
+    if (pg != NULL) {
+        pg->writable = writable;
     }
 
 
@@ -119,20 +138,17 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
     uint8_t *kpage;
     size_t page_read_bytes;
     size_t page_zero_bytes;
-   // printf("install_suppl_page\n");
     if (pg != NULL) {
         switch(pg->location) {
             case ZERO:
                 kpage = frame_alloc(true);
                 if (kpage == NULL) {
-                    //exit(-1);
                     return 0;
                 }
                 //memset (kpage, 0, PGSIZE);
                 if (!install_page (upage, kpage, pg->writable))
                 {
                     frame_free(kpage);
-                    //exit(-1);
                     printf("install page fail\n");
                     return 0;
                 }
@@ -140,7 +156,6 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                 return 1;
                 break; //Never reached
             case SWAP:
-                printf("case swap\n");
 				kpage = frame_alloc(false);
 				if (kpage == NULL) return 0;
 				swap_in(pg->swap_index, kpage);
@@ -156,17 +171,12 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
             case FRAME:
                 break;
             case FILE: //Lazy Loading!
-                //printf("filesys_lock\n");
                 filesys_lock_acquire();
-                //printf("lock after\n");
                 kpage = frame_alloc(false);
-                //printf("1");
                 if (kpage == NULL) {
+                    printf("frame_alloc fail : should PANIC\n");
                     return 0;
-                    printf("frame_alloc fail\n");
-                    //exit(-1);
                 }
-                //printf("2");
                 page_read_bytes = pg->page_read_bytes;
                 page_zero_bytes = PGSIZE - page_read_bytes;
 
@@ -177,35 +187,28 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
                     filesys_lock_release();
                     printf("file_read fail\n");
                     return 0;
-                    //exit(-1);
                 }
-                //printf("3");
                 memset (kpage + page_read_bytes, 0, page_zero_bytes);
-                //printf("filesys_lock_release\n");
                 filesys_lock_release();
-                //printf("after release\n");
-
+                
                 if (!install_page (upage, kpage, pg->writable))
                 {
-                    //printf("install page fail?\n");
                     frame_free(kpage);
                     printf("install page fail\n");
                     return 0;
-                    //exit(-1);
                 }
 				pg->location = FRAME;
-                //printf("4");
 
                 return 1;
+
                 break;
             default:
                 break;
         }
     }
     else {
-        printf("pg is null\n");
+        //printf("Faulted page %x has no SUPP PAGE - EXIT(-1)\n", upage);
         return 0;
-        //exit(-1);
     }
 }
 
