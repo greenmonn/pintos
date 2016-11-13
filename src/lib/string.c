@@ -282,8 +282,13 @@ memset (void *dst_, int value, size_t size)
 
   ASSERT (dst != NULL || size == 0);
   
-  while (size-- > 0)
+  while (size-- > 0) {
+    //if (dst == 0x5a5a5a5a) {
+    //    printf("writing buf %x\n", dst);
+    //}
     *dst++ = value;
+  }
+  //printf("memset finish : %x\n" ,dst);
 
   return dst_;
 }
