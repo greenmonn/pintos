@@ -276,7 +276,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, list_more_priority, NULL);
+  list_insert_ordered(&ready_list, &t->elem, list_more_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -345,8 +345,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (curr != idle_thread) { 
+        list_push_back(&ready_list, &curr->elem);
         list_sort(&ready_list, list_more_priority, NULL);
-      list_insert_ordered (&ready_list, &curr->elem, list_more_priority, NULL);
   }
   curr->status = THREAD_READY;
   schedule ();
@@ -358,15 +358,9 @@ void
 thread_set_priority (int new_priority) 
 {
     enum intr_level old_level = intr_disable();
-  if (thread_current ()->original_pri != thread_current ()->priority) {  
-      thread_current() ->original_pri = new_priority;
-  }
-  else {
-      thread_current ()->original_pri = new_priority;
-      thread_current ()->priority = new_priority;
-  }
-  intr_set_level(old_level);
-  run_max_priority();
+    thread_current ()->priority = new_priority;
+    intr_set_level(old_level);
+    run_max_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -491,16 +485,20 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->acquiring_lock = NULL;  
-  t->original_pri = priority; //not donated
+
+  //VM
+  t->esp = NULL;
+  lock_init(&t->pagedir_lock);
+
   t->magic = THREAD_MAGIC;
+
+  //USERPROG
   t->proc_status = 0;
   t->parent = NULL;
   t->is_child_load = 0;
   sema_init(&t->sema, 0);
   sema_init(&t->sema2, 0);
   sema_init(&t->sema_wait, 0);
-  list_init(&t->acquired_lock_list);
   list_init(&t->child_list);
 }
 

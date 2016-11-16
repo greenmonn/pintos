@@ -42,5 +42,7 @@ void page_insert(struct hash *pages, struct page *page);
 struct page *page_lookup(struct hash *pages, const void *addr);
 
 int install_suppl_page(struct hash *pages, struct page *pg, void *upage);
-bool install_page(void *upage, void *kpage, bool writable);
+
+//bool install_page(void *upage, struct frame *fr, bool writable);
+
 #endif /* vm/page.h */

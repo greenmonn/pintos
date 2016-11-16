@@ -20,6 +20,7 @@
 #include "threads/synch.h"
 #include "userprog/syscall.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline,  void (**eip) (void), void **esp);
@@ -114,10 +115,8 @@ process_execute (const char *file_name)
   //thread_block();
   //intr_enable();
   //printf("check child already load\n");
-  sema_up(&thread_current()->sema2);  //1
-  sema_down(&thread_current()->sema);     //1
-  //sema_up(&thread_current()->sema2);
-  //printf("parent woke up by child\n");
+  sema_up(&thread_current()->sema2);  
+  sema_down(&thread_current()->sema);     //4
 
 
   if (thread_current()->is_child_load == 2) {
@@ -149,6 +148,7 @@ start_process (void *f_name)
   filesys_lock_release();
   //printf("after load\n");
   sema_down(&thread_current()->parent->sema2);
+  //printf("parent already woke me up\n");
   palloc_free_page(f_name);     //2
   if (success) {
       struct child_elem *child = find_child(thread_current()->tid);
@@ -699,19 +699,23 @@ static bool setup_stack (void **esp, char *f_name)
 {
   uint8_t *kpage;
   bool success = false;
-  kpage = frame_alloc(true);
+  struct frame *newfr = frame_alloc(true);
+  kpage = ptov(newfr->addr);
   if (kpage != NULL) 
     {
 
       struct page *stk_pg = make_page(((uint8_t *) PHYS_BASE) - PGSIZE, FRAME);
       page_insert(thread_current()->suppl_pages, stk_pg);
       
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, newfr, true);
 
-      if (success)
+      if (success) {
         *esp = PHYS_BASE;
+        //struct frame *fr = frame_find(kpage);
+        //newfr->pin = false;
+      }
       else
-        palloc_free_page (kpage);
+        frame_free(kpage);
     }
 
   /* filename parse */

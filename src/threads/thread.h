@@ -102,6 +102,8 @@ struct thread
     struct hash *suppl_pages;
     struct list child_list;
     int proc_status;
+    void *esp;
+    void *fault_addr;
     //struct process *proc;    //process information block (parent, child..)
     /* File Descriptor Table */
     int fd_num;
@@ -112,12 +114,13 @@ struct thread
     struct semaphore sema;
     struct semaphore sema2;
     struct semaphore sema_wait;
+    struct lock pagedir_lock;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     int64_t wakeuptime;                     /* ALARM CLOCK : TIME TO WAKE UP */
-    int original_pri; //original priority .. for calling set_priority when having donated priority
-    struct lock *acquiring_lock;
-    struct list acquired_lock_list;
+    //int original_pri; //original priority .. for calling set_priority when having donated priority
+    //struct lock *acquiring_lock;
+    //struct list acquired_lock_list;
   };
 
 /* If false (default), use round-robin scheduler.
