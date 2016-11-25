@@ -11,6 +11,14 @@ struct file_elem {
 	struct lock *file_lock;
 };
 
+struct mmap_elem {
+	struct file *file;
+	void* addr;
+	uint32_t read_bytes;
+	int mapid;
+	struct list_elem elem;
+};
+
 struct child_elem {
 	struct list_elem elem;
 	int exit;

@@ -2,13 +2,15 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
-#include "userprog/syscall.h"
+//#include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
+#define STACK_SIZE 262144
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -18,6 +20,7 @@ static void page_fault (struct intr_frame *);
 
 int non_IO_cnt;
 int IO_cnt;
+int executing_process;
 struct semaphore IO_mutex;
 struct semaphore nonIO_mutex;
 struct semaphore IO_sema;
@@ -40,39 +43,40 @@ struct semaphore IO_sema;
 void
 exception_init (void) 
 {
-  /* These exceptions can be raised explicitly by a user program,
-     e.g. via the INT, INT3, INTO, and BOUND instructions.  Thus,
-     we set DPL==3, meaning that user programs are allowed to
-     invoke them via these instructions. */
+    /* These exceptions can be raised explicitly by a user program,
+       e.g. via the INT, INT3, INTO, and BOUND instructions.  Thus,
+       we set DPL==3, meaning that user programs are allowed to
+       invoke them via these instructions. */
     sema_init(&IO_sema, 0);
-  intr_register_int (3, 3, INTR_ON, kill, "#BP Breakpoint Exception");
-  intr_register_int (4, 3, INTR_ON, kill, "#OF Overflow Exception");
-  intr_register_int (5, 3, INTR_ON, kill,
-                     "#BR BOUND Range Exceeded Exception");
+    intr_register_int (3, 3, INTR_ON, kill, "#BP Breakpoint Exception");
+    intr_register_int (4, 3, INTR_ON, kill, "#OF Overflow Exception");
+    intr_register_int (5, 3, INTR_ON, kill,
+            "#BR BOUND Range Exceeded Exception");
 
-  /* These exceptions have DPL==0, preventing user processes from
-     invoking them via the INT instruction.  They can still be
-     caused indirectly, e.g. #DE can be caused by dividing by
-     0.  */
-  intr_register_int (0, 0, INTR_ON, kill, "#DE Divide Error");
-  intr_register_int (1, 0, INTR_ON, kill, "#DB Debug Exception");
-  intr_register_int (6, 0, INTR_ON, kill, "#UD Invalid Opcode Exception");
-  intr_register_int (7, 0, INTR_ON, kill,
-                     "#NM Device Not Available Exception");
-  intr_register_int (11, 0, INTR_ON, kill, "#NP Segment Not Present");
-  intr_register_int (12, 0, INTR_ON, kill, "#SS Stack Fault Exception");
-  intr_register_int (13, 0, INTR_ON, kill, "#GP General Protection Exception");
-  intr_register_int (16, 0, INTR_ON, kill, "#MF x87 FPU Floating-Point Error");
-  intr_register_int (19, 0, INTR_ON, kill,
-                     "#XF SIMD Floating-Point Exception");
+    /* These exceptions have DPL==0, preventing user processes from
+       invoking them via the INT instruction.  They can still be
+       caused indirectly, e.g. #DE can be caused by dividing by
+       0.  */
+    intr_register_int (0, 0, INTR_ON, kill, "#DE Divide Error");
+    intr_register_int (1, 0, INTR_ON, kill, "#DB Debug Exception");
+    intr_register_int (6, 0, INTR_ON, kill, "#UD Invalid Opcode Exception");
+    intr_register_int (7, 0, INTR_ON, kill,
+            "#NM Device Not Available Exception");
+    intr_register_int (11, 0, INTR_ON, kill, "#NP Segment Not Present");
+    intr_register_int (12, 0, INTR_ON, kill, "#SS Stack Fault Exception");
+    intr_register_int (13, 0, INTR_ON, kill, "#GP General Protection Exception");
+    intr_register_int (16, 0, INTR_ON, kill, "#MF x87 FPU Floating-Point Error");
+    intr_register_int (19, 0, INTR_ON, kill,
+            "#XF SIMD Floating-Point Exception");
 
-  /* Most exceptions can be handled with interrupts turned on.
+    /* Most exceptions can be handled with interrupts turned on.
      We need to disable interrupts for page faults because the
      fault address is stored in CR2 and needs to be preserved. */
   intr_register_int (14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
 
   non_IO_cnt = 0;
   IO_cnt = 0;
+  executing_process = 0;
   sema_init(&IO_sema, 0);
   sema_init(&IO_mutex, 1);
   sema_init(&nonIO_mutex, 1);
@@ -80,15 +84,15 @@ exception_init (void)
 }
 
 void
-IO_sema_down(void)
+exec_up(void)
 {
-    sema_down(&IO_sema);
+    executing_process++;
 }
 
 void 
-IO_sema_up(void)
+exec_down(void)
 {
-    sema_up(&IO_sema);
+    executing_process--;
 }
 
 /* Prints exception statistics. */
@@ -199,142 +203,59 @@ page_fault (struct intr_frame *f)
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
 
-  if (is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
+  if (user) thread_current()->esp = fault_addr;
+
+  //printf("*\n page fault : %x enter\n", fault_addr);
+  if (not_present && is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
       //TODO 1 : find given faulted address in  supplemental page table of current thread
-      bool use_IO = true;
       struct hash *supp = thread_current ()->suppl_pages;
-      uint8_t *kpage;
+      uint8_t *kpage = NULL;
       uint8_t *upage = pg_round_down(fault_addr);
       struct page *pg = page_lookup(supp, upage);
-      //printf("suppl. page addr %x\n", pg);
-      //success = install_suppl_page(supp, pg, upage);
-      //printf("File install success\n");
-      //printf("user vaddr page fault : %x\n", fault_addr);
-      size_t page_read_bytes;
-      size_t page_zero_bytes;
-      //int readbytes;
+      //size_t page_read_bytes;
+      //size_t page_zero_bytes;
 
 
       //TODO : SYNCHRONIZATION - page fault need I/O or not
-      //should handle I/O-required-pagefault first
-      bool is_stack = is_stack_access(fault_addr, f);
+      //should handle I/O-required-pagefault later(after other processes finish)
+      bool use_IO;
+      //thread_current()->esp = f->esp; //for stack growth
+       
       int pg_location = (pg ==  NULL ? -1 : pg->location);
 
-/*
+      /*
 
       sema_down(&IO_mutex);
-      if (is_stack || pg_location == ZERO) {
+      if (pg_location == -1 || pg_location == ZERO) {
           use_IO = false;
           non_IO_cnt++;
       } 
       else {
+          use_IO = true;
           IO_cnt++;
+          thread_set_priority(PRI_MIN);
           if (non_IO_cnt != 0) {
               sema_down(&IO_sema);
+              thread_set_priority(PRI_DEFAULT);
           }
       }
       sema_up(&IO_mutex);
       */
-          
 
+      //if (pg_location == -1 || pg_location == ZERO)
+      //    thread_set_priority(PRI_DEFAULT);
 
-      if (pg == NULL && is_stack) {
-          //Stack access : fault address >= esp - 32
-          //TODO : set up additional stack
-          //kpage = frame_alloc(true);
-          //printf("%x Stack growth : %x kpage alloc?\n", fault_addr, kpage);
-          //printf("esp is %x\n", f->esp);
-         // if (kpage != NULL)
-         // {
-              uint8_t *stack_end = pg_round_down(f->esp);
-              if (pg_round_down(fault_addr) < stack_end)
-                  stack_end = pg_round_down(fault_addr);
-              int i = 0;
-              success = 1;
-              while(success) {
-                  kpage = frame_alloc(true);
+      //if (pg_location == SWAP || pg_location == FILE)
+      //    thread_set_priority(PRI_MIN);
 
-                  if (kpage != NULL) {
-                      struct page *stk_pg = make_page(stack_end + PGSIZE*i, FRAME);
-                      page_insert(thread_current()->suppl_pages, stk_pg); 
-                     success = install_page(stack_end + PGSIZE*i, kpage, true);
-                     i++;
-                  } 
-                  else { 
-                      success = -1;
-                      break;
-                  }
-              }
-              if (success != -1) {
-                  frame_free(kpage);
-                  success = 1;
-              } 
-              else if (success == -1) { //Frame allocation fail
-                  success = 0;
-              }
-         // }
-          //although success == 0, page fault would not terminate program
-          //success = 1;
-      }
-      
-      else {
-        success = install_suppl_page(supp, pg, upage);
-        //printf("success : %d\n", success);
-        //printf("pg is %x, faulted addr is %x\n", pg, fault_addr);
-      }
-      /*
-      if (pg != NULL) {
-          //Exist in the supplemental table -> install now
-          switch(pg->location) {
-              case SWAP:
-                  break;
-              case FRAME:
-                  break;
-              case FILE:    //Lazy Loading!
-                  //printf("1");
+      success = install_suppl_page(supp, pg, upage);
 
-                  filesys_lock_acquire();
-                  kpage = frame_alloc(false);
-                  if (kpage == NULL)
-                      exit(-1);
-                  //printf("2");
-                  page_read_bytes = pg->page_read_bytes;
-                  page_zero_bytes = PGSIZE - page_read_bytes;
-
-                  file_seek(pg->file, pg->ofs);
-                  //printf("3");
-                  if (file_read (pg->file, kpage, page_read_bytes) != (int) page_read_bytes) {
-                      //printf("4");
-                      frame_free(kpage);
-                      filesys_lock_release();
-                      //printf("5");
-                      exit(-1);
-                  }
-                 // printf("6");
-                  memset (kpage + page_read_bytes, 0, page_zero_bytes);
-                  filesys_lock_release();
-                  //printf("7");
-
-                  if(!install_page (upage, kpage, pg->writable))
-                  {
-                     // printf("8");
-                      frame_free(kpage);
-                      exit(-1);
-                  }
-                  //printf("9");
-                  success = true;
-                  
-                  break;
-
-              default:
-                  break;
-          }
-      } //There exist page in suppl. page table
-      else {
-      exit(-1);
-      }
-      */
-        /*
+	  if (!success) {
+	  	if (fault_addr >= f->esp -32 && ((uint8_t) (PHYS_BASE)) -((uint8_t) (fault_addr)) <= STACK_SIZE) {
+			success = install_suppl_stack_page(supp,pg,upage);
+		}
+	  }
+/*
       sema_down(&IO_mutex);
       if (!use_IO) {
           non_IO_cnt--;
@@ -348,14 +269,19 @@ page_fault (struct intr_frame *f)
           IO_cnt--;
       }
       sema_up(&IO_mutex);
-      */
+*/
+      //thread_set_priority(PRI_MAX);
+      //printf("page fault : %x complete\n", fault_addr);
+	  
+	 
 
-      if (success != 1) {
+      if (!success) {
           //printf("We exit on page_fault : fault_addr %x\n", fault_addr);
           exit(-1);
       }
-
+      
   }
+
 
     if (success == 2) {  //success value unchanged
       printf ("Page fault at %p: %s error %s page in %s context.\n",

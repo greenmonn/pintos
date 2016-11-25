@@ -15,13 +15,14 @@ struct frame
     uint32_t *pte;
     void *upage; //Installed page's User virtual address
     struct thread *owner;
+    bool pin;
 
 };
 
 struct frame *make_frame(void *addr, struct thread *owner);
 void set_frame(struct frame *fr, uint32_t *pte);
 void frame_table_init(void);
-void * frame_alloc(bool zero);
+struct frame * frame_alloc(bool zero);
 void frame_free();
 struct frame * frame_evict();
 
