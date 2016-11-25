@@ -10,7 +10,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 
-#define STACK_SIZE 262144
+
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -203,7 +203,7 @@ page_fault (struct intr_frame *f)
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
 
-  if (user) thread_current()->esp = fault_addr;
+  if (user) thread_current()->esp = f->esp;
 
   //printf("*\n page fault : %x enter\n", fault_addr);
   if (not_present && is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
@@ -248,13 +248,13 @@ page_fault (struct intr_frame *f)
       //if (pg_location == SWAP || pg_location == FILE)
       //    thread_set_priority(PRI_MIN);
 
-      success = install_suppl_page(supp, pg, upage);
+      success = install_suppl_page(supp, pg, fault_addr);
 
-	  if (!success) {
-	  	if (fault_addr >= f->esp -32 && ((uint8_t) (PHYS_BASE)) -((uint8_t) (fault_addr)) <= STACK_SIZE) {
-			success = install_suppl_stack_page(supp,pg,upage);
-		}
-	  }
+	 // if (!success) {
+	  //	if (fault_addr >= f->esp -32 && ((uint8_t) (PHYS_BASE)) -((uint8_t) (fault_addr)) <= STACK_SIZE) {
+		//	success = install_suppl_stack_page(supp,pg,upage);
+	//	}
+	 // }
 /*
       sema_down(&IO_mutex);
       if (!use_IO) {

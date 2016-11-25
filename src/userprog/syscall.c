@@ -57,15 +57,15 @@ userptr_valid(char* ptr) {
             //if (pg_location == SWAP || pg_location == FILE)
             //    thread_set_priority(PRI_MIN);
 
-            flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+            flag = install_suppl_page(thread_current()->suppl_pages, pg, ptr);
 			
-			if (!flag) {
-				if (((void *)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t)((void *)ptr)) <= STACK_SIZE) {
-					flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+			//if (!flag) {
+			//	if (((void *)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t)((void *)ptr)) <= STACK_SIZE) {
+			//		flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
 					//printf("make stack growth\n");
-				}
-			}
-		flag = pg->writable;
+			//	}
+		//	}
+		//flag = pg->writable;
 
             //thread_set_priority(PRI_DEFAULT);
 
@@ -82,7 +82,7 @@ userptr_valid_no_code(char* ptr) {
 
 	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
 
-	if (pg != NULL && pg->location == 0) {
+	if (pg != NULL && pg->location == 0 && pg->writable) {
 		return true;
 	}
 
@@ -92,14 +92,15 @@ userptr_valid_no_code(char* ptr) {
 	//   thread_set_priority(PRI_MIN);
 
 	flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-	if (!flag) {	
-		if (((void*)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t) ((void*)ptr)) <= STACK_SIZE) {	
-			flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-			//printf("make stack growth\n");
-		}
-	}
-	pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
-	flag = pg->writable;
+	//if (!flag) {	
+	//	if (((void*)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t) ((void*)ptr)) <= STACK_SIZE) {	
+	//		flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+	//		//printf("make stack growth\n");
+	//	}
+//	}
+	//pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+	//if (pg != NULL)
+    //    flag = pg->writable;
 	//thread_set_priority(PRI_DEFAULT);
 
 	

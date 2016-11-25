@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define STACK_SIZE 262144
+
 /* Create a new "page", which saves information for later installation of physical memory frame. */
 struct page *
 make_page(void *uaddr, enum page_location place)
@@ -141,140 +143,182 @@ install_page (void *upage, struct frame *fr, bool writable)
 }
 
 int
-install_suppl_page(struct hash *pages, struct page *pg, void *upage) 
+install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr) 
 {
     uint8_t *kpage;
-    //void *upage = pg_round_down(fault_addr);
+    void *upage = pg_round_down(fault_addr);
     size_t page_read_bytes;
     size_t page_zero_bytes;
     struct frame *newfr;
     struct thread *t = thread_current();
     //printf("install_suppl_page : %x\n", fault_addr);
-    if (pg == NULL) return 0;
-	switch(pg->location) {
-		case ZERO:
-			newfr = frame_alloc(true);
-			if (newfr == NULL) {
-				return 0;
-			}
-			kpage = ptov(newfr->addr);
-			//memset (kpage, 0, PGSIZE);
-			if (!install_page (upage, newfr, pg->writable))
-			{
-				frame_free(kpage);
-				printf("install page fail\n");
-				return 0;
-			}
-			pg->location = FRAME;
-			pagedir_set_accessed(t->pagedir, upage, true);
-			pagedir_set_dirty(t->pagedir, upage, false);
-			//newfr = frame_find(kpage);
-			newfr->pin = false;
-			return 1;
-			break; //Never reached
-		case SWAP:
-			newfr = frame_alloc(false);
-			if (newfr == NULL) return 0;
-			kpage = ptov(newfr->addr);
-			swap_in(pg->swap_index, kpage);
-			//printf("1\n");
-			pg->location = FRAME;
-			pg->swap_index = -1;
-			if (!install_page(upage, newfr, pg->writable))
-			{
-				frame_free(kpage);
-				return 0;
-			}
+    if (pg != NULL) { 
+        switch(pg->location) {
+            case ZERO:
+                newfr = frame_alloc(true);
+                if (newfr == NULL) {
+                    return 0;
+                }
+                kpage = ptov(newfr->addr);
+                //memset (kpage, 0, PGSIZE);
+                if (!install_page (upage, newfr, pg->writable))
+                {
+                    frame_free(kpage);
+                    printf("install page fail\n");
+                    return 0;
+                }
+                pg->location = FRAME;
+                pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_dirty(t->pagedir, upage, false);
+                //newfr = frame_find(kpage);
+                newfr->pin = false;
+                return 1;
+                break; //Never reached
+            case SWAP:
+                newfr = frame_alloc(false);
+                if (newfr == NULL) return 0;
+                kpage = ptov(newfr->addr);
+                swap_in(pg->swap_index, kpage);
+                //printf("1\n");
+                pg->location = FRAME;
+                pg->swap_index = -1;
+                if (!install_page(upage, newfr, pg->writable))
+                {
+                    frame_free(kpage);
+                    return 0;
+                }
 
-			pagedir_set_dirty(t->pagedir, upage, true);
-			pagedir_set_accessed(t->pagedir, upage, true);
-			//newfr = frame_find(kpage);
-			newfr->pin = false;
-			return 1;
-			break;
-		case FRAME:
-			return 0;
-			break;
-		case FILE: //Lazy Loading!
+                pagedir_set_dirty(t->pagedir, upage, true);
+                pagedir_set_accessed(t->pagedir, upage, true);
+                //newfr = frame_find(kpage);
+                newfr->pin = false;
+                return 1;
+                break;
+            case FRAME:
+                return 0;
+                break;
+            case FILE: //Lazy Loading!
 
-			newfr = frame_alloc(false);
-			kpage = ptov(newfr->addr);
-			if (kpage == NULL) {
-				printf("frame_alloc fail : should PANIC\n");
-				return 0;
-			}
-			page_read_bytes = pg->page_read_bytes;
-			page_zero_bytes = PGSIZE - page_read_bytes;
-
-
-			//filesys_lock_acquire();
-			//file_seek(pg->file, pg->ofs);
-			if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
-				frame_free(kpage);
-				//filesys_lock_release();
-				printf("file_read fail\n");
-				return 0;
-			}
-			//filesys_lock_release();
-			memset (kpage + page_read_bytes, 0, page_zero_bytes);
+                newfr = frame_alloc(false);
+                kpage = ptov(newfr->addr);
+                if (kpage == NULL) {
+                    printf("frame_alloc fail : should PANIC\n");
+                    return 0;
+                }
+                page_read_bytes = pg->page_read_bytes;
+                page_zero_bytes = PGSIZE - page_read_bytes;
 
 
-			if (!install_page (upage, newfr, pg->writable))
-			{
-				frame_free(kpage);
-				printf("install page fail\n");
-				return 0;
-			}
-			pg->location = FRAME;
-
-			pagedir_set_accessed(t->pagedir, upage, true);
-			pagedir_set_dirty(t->pagedir, upage, false);
-			newfr->pin = false;
-			return 1;
-
-			break;
-		case MMAP:
-
-			newfr = frame_alloc(false);
-			kpage = ptov(newfr->addr);
-			if (kpage == NULL) {
-				printf("frame_alloc fail : should PANIC\n");
-				return 0;
-			}
-			page_read_bytes = pg->page_read_bytes;
-			page_zero_bytes = PGSIZE - page_read_bytes;
+                //filesys_lock_acquire();
+                //file_seek(pg->file, pg->ofs);
+                if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
+                    frame_free(kpage);
+                    //filesys_lock_release();
+                    printf("file_read fail\n");
+                    return 0;
+                }
+                //filesys_lock_release();
+                memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
 
-			//filesys_lock_acquire();
-			//file_seek(pg->file, pg->ofs);
-			if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
-				frame_free(kpage);
-				//filesys_lock_release();
-				printf("file_read fail\n");
-				return 0;
-			}
-			//filesys_lock_release();
-			memset (kpage + page_read_bytes, 0, page_zero_bytes);
+                if (!install_page (upage, newfr, pg->writable))
+                {
+                    frame_free(kpage);
+                    printf("install page fail\n");
+                    return 0;
+                }
+                pg->location = FRAME;
+
+                pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_dirty(t->pagedir, upage, false);
+                newfr->pin = false;
+                return 1;
+
+                break;
+            case MMAP:
+
+                newfr = frame_alloc(false);
+                kpage = ptov(newfr->addr);
+                if (kpage == NULL) {
+                    printf("frame_alloc fail : should PANIC\n");
+                    return 0;
+                }
+                page_read_bytes = pg->page_read_bytes;
+                page_zero_bytes = PGSIZE - page_read_bytes;
 
 
-			if (!install_page (upage, newfr, pg->writable))
-			{
-				frame_free(kpage);
-				printf("install page fail\n");
-				return 0;
-			}
-			pg->location = MMAP;
+                //filesys_lock_acquire();
+                //file_seek(pg->file, pg->ofs);
+                if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
+                    frame_free(kpage);
+                    //filesys_lock_release();
+                    printf("file_read fail\n");
+                    return 0;
+                }
+                //filesys_lock_release();
+                memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-			pagedir_set_accessed(t->pagedir, upage, true);
-			pagedir_set_dirty(t->pagedir, upage, false);
-			newfr->pin = false;
-			return 1;
 
-			break;
+                if (!install_page (upage, newfr, pg->writable))
+                {
+                    frame_free(kpage);
+                    printf("install page fail\n");
+                    return 0;
+                }
+                pg->location = MMAP;
 
-		default:
-			break;
-	}
+                pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_dirty(t->pagedir, upage, false);
+                newfr->pin = false;
+                return 1;
+
+                break;
+
+            default:
+                break;
+        }
+    } 
+    else {
+        void *esp = thread_current()->esp;
+    
+      
+        if ((size_t)esp - 32 > ((size_t)fault_addr) || ((size_t)PHYS_BASE) - ((size_t)((void *)fault_addr)) > STACK_SIZE) {
+            
+            return 0;
+        }
+
+        newfr = frame_alloc(true);
+        newfr->pin = false;
+        kpage = ptov(newfr->addr);
+
+        if (kpage != NULL) {
+            struct page *stk_pg = make_page(upage, FRAME);
+            stk_pg->writable= true;
+            stk_pg->file = NULL;
+            if (stk_pg == NULL) {
+                frame_free(kpage);
+                return 0;
+            }
+            page_insert(pages, stk_pg);
+            if (install_page(upage, newfr, true)) {
+                pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_dirty(t->pagedir, upage, true);
+                return 1;
+            } else {
+                frame_free(kpage);
+                hash_delete(pages, &stk_pg->elem);
+                free(stk_pg);
+                return 0;
+            }
+        }
+        else {
+            frame_free(kpage);
+            return 0;
+        }
+
+        return 0;
+
+    }
 }
 
 int install_suppl_stack_page (struct hash *pages, struct page *pg, void *upage)
