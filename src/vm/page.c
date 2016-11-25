@@ -27,15 +27,18 @@ make_page(void *uaddr, enum page_location place)
 
 /* 1. page type : FILE */
 
-void
+bool
 page_set_file(struct hash *pages, struct page *page_, struct file *file_,int32_t ofs_, bool writable_, int page_read_bytes_)
 {
-    page_insert(pages, page_);
+    if (!page_insert(pages, page_)) {
+		return false;
+	}
     page_->file = file_;
     page_->ofs = ofs_;
     page_->writable = writable_;
     page_->page_read_bytes = page_read_bytes_;
     //page_->is_code_seg = false;
+	return true;
 }
 // Later we'll get frame and read the file then install to the physical memory.
 
@@ -94,10 +97,11 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUS
     return a->uaddr < b->uaddr;
 }
 
-void
+bool
 page_insert(struct hash *pages, struct page *page)
 {
-    hash_replace(pages, &page->elem);
+    if (!hash_replace(pages, &page->elem)) return false;
+	return true;
     //not allow duplication!
 }
 
@@ -232,6 +236,45 @@ install_suppl_page(struct hash *pages, struct page *pg, void *upage)
 			return 1;
 
 			break;
+		case MMAP:
+
+			newfr = frame_alloc(false);
+			kpage = ptov(newfr->addr);
+			if (kpage == NULL) {
+				printf("frame_alloc fail : should PANIC\n");
+				return 0;
+			}
+			page_read_bytes = pg->page_read_bytes;
+			page_zero_bytes = PGSIZE - page_read_bytes;
+
+
+			//filesys_lock_acquire();
+			//file_seek(pg->file, pg->ofs);
+			if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
+				frame_free(kpage);
+				//filesys_lock_release();
+				printf("file_read fail\n");
+				return 0;
+			}
+			//filesys_lock_release();
+			memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+
+			if (!install_page (upage, newfr, pg->writable))
+			{
+				frame_free(kpage);
+				printf("install page fail\n");
+				return 0;
+			}
+			pg->location = MMAP;
+
+			pagedir_set_accessed(t->pagedir, upage, true);
+			pagedir_set_dirty(t->pagedir, upage, false);
+			newfr->pin = false;
+			return 1;
+
+			break;
+
 		default:
 			break;
 	}

@@ -61,52 +61,58 @@ frame_find(void *kaddr)
     //lock_release(&frame_table_lock);
     return NULL;
 }
+
 struct frame *
 frame_alloc(bool zero)
 {	
-    lock_acquire(&frame_lock);
-    void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
-    if (!kaddr) {   //Evict a frame and make it as MINE!
-        //printf("frame_alloc() : palloc failed\n");
+	lock_acquire(&frame_lock);
+	void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
+	if (!kaddr) {   //Evict a frame and make it as MINE!
+		//printf("frame_alloc() : palloc failed\n");
 		struct frame *evicted_fr = frame_evict();
-        void *evicted_addr = ptov(evicted_fr->addr);
-        //printf("CHOSEN VICTOM : on %x mapped to UADDR %x\n", evicted_addr, evicted_fr->upage);
+		void *evicted_addr = ptov(evicted_fr->addr);
+		//printf("CHOSEN VICTOM : on %x mapped to UADDR %x\n", evicted_addr, evicted_fr->upage);
 
-        //printf("evicted frame's OWNER THREAD is %x, %s\n", (evicted_fr->owner), evicted_fr->owner->name);
-      
+		//printf("evicted frame's OWNER THREAD is %x, %s\n", (evicted_fr->owner), evicted_fr->owner->name);
+
 		struct page * evicted_page = page_lookup((evicted_fr->owner)->suppl_pages, evicted_fr->upage);
 
-        //printf("We have a supplemental page : %x\n", evicted_page); 
+		//printf("We have a supplemental page : %x\n", evicted_page); 
 
 
-       pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
+		pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
+		if (evicted_page->location == MMAP) {
+			filesys_lock_acquire();
+			file_write_at(evicted_page->file,kaddr,evicted_page->page_read_bytes,evicted_page->ofs);
+			filesys_lock_release();
+		}
 		size_t swap_index = swap_out(evicted_addr);
 		//printf("2\n");
-        if(evicted_page != NULL) {
+		if(evicted_page != NULL) {
 
-            evicted_page->location = SWAP;
-            evicted_page->swap_index = swap_index;
-            evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-        } 
-        else {
-            //printf("NO SUPP PAGE : Make new one!\n");
-            struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
-            new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-            new_swap_page->swap_index = swap_index;
-            page_insert(thread_current()->suppl_pages, new_swap_page);
-        }
+			evicted_page->location = SWAP;
+			evicted_page->swap_index = swap_index;
+			evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
+		} 
+		else {
+			//printf("NO SUPP PAGE : Make new one!\n");
+			struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
+			new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
+			new_swap_page->swap_index = swap_index;
+			page_insert(thread_current()->suppl_pages, new_swap_page);
+		}
 
-        //lock_acquire(&frame_table_lock);
-        list_remove(&evicted_fr->elem);
-        //lock_release(&frame_table_lock);
+		//lock_acquire(&frame_table_lock);
+		list_remove(&evicted_fr->elem);
+		//lock_release(&frame_table_lock);
 
-        free(evicted_fr);
+		free(evicted_fr);
 
-        palloc_free_page(evicted_addr);
-        //REtry palloc!
-        kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
-        ASSERT(evicted_addr == kaddr);
-    }
+		palloc_free_page(evicted_addr);
+		//REtry palloc!
+		kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
+		ASSERT(evicted_addr == kaddr);
+	}
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
     //lock_acquire(&frame_table_lock);
     list_push_back(&frame_table, &new_fr->elem);

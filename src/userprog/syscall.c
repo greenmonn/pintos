@@ -287,6 +287,18 @@ syscall_handler (struct intr_frame *f)
 		close(arg[0]);
         break;
 	}
+	case SYS_MMAP:
+	{
+		get_arg(f, arg, 2);
+		f->eax = mmap(arg[0], (void*)arg[1]);
+		break;
+	}
+	case SYS_MUNMAP:
+	{
+		get_arg(f, arg, 1);
+		munmap(arg[0]);
+		break;
+	}
   }
 }
 
@@ -540,3 +552,112 @@ int tell(int fd) {
     return ret;
 }
 
+int mmap (int fd, void *addr) {
+	//printf("fd: %d\n",fd);
+	//printf("addr: %x\n", addr);
+	if (fd == 0 || fd == 1)
+		return -1;
+
+	if (addr == 0 || pg_ofs(addr) || !is_user_vaddr(addr))
+        return -1;
+
+	lock_acquire(&filesys_lock);
+
+	struct file *file_to_mmap = find_file_desc(fd);
+	if (!file_to_mmap) {
+		lock_release(&filesys_lock);
+		return -1;
+	}
+
+	file_to_mmap = file_reopen(file_to_mmap);
+
+	uint32_t read_bytes = file_length(file_to_mmap);
+	if ( file_length(file_to_mmap) == 0) {
+		lock_release(&filesys_lock);
+		return -1;
+	}
+
+	lock_release(&filesys_lock);
+
+	int32_t ofs = 0;
+	int32_t size = read_bytes;
+	thread_current()->mapid++;
+
+	while (read_bytes > 0)
+	{
+		uint32_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+		uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+		struct page *mmap_pg = make_page(addr , MMAP);
+		
+		
+
+		if (page_set_file (thread_current()->suppl_pages, mmap_pg, file_to_mmap, ofs ,true, page_read_bytes)) {
+				munmap(thread_current()->mapid);
+				printf("1\n");
+				return -1;
+		}
+
+		read_bytes -= page_read_bytes;
+		ofs += page_read_bytes;
+		addr += PGSIZE;
+	}
+
+	struct mmap_elem *m = malloc(sizeof(struct mmap_elem));
+	m->file = file_to_mmap;
+	m->addr = addr;
+	m->read_bytes = size;
+	m->mapid = thread_current()->mapid;
+	list_push_back(&thread_current()->mmap_list, &m->elem);
+
+	return thread_current()->mapid;
+}
+
+void munmap (int mapid) {
+	struct list_elem *e;
+	struct mmap_elem *me;
+	for (e = list_begin(&thread_current()->mmap_list); e != list_end(&thread_current()->mmap_list); e = list_next(e)) {
+        me = list_entry(e, struct mmap_elem, elem);
+        if (me->mapid == mapid) {
+            break;
+        }
+    }
+	list_remove(e);
+	void* addr = me->addr;
+
+	struct page *mmap_pg;
+
+	uint32_t read_bytes = me->read_bytes;
+	uint32_t ofs = 0;
+
+			lock_acquire(&filesys_lock);
+	while (read_bytes > 0)
+	{
+
+		mmap_pg = page_lookup(thread_current()->suppl_pages,addr);
+		
+		if (pagedir_is_dirty(thread_current()->pagedir,addr)) {
+
+			file_write_at(me->file, addr, mmap_pg->page_read_bytes, ofs);
+			
+			hash_delete(thread_current()->suppl_pages, &mmap_pg->elem);
+			free(mmap_pg);
+
+
+			frame_free(pagedir_get_page(thread_current()->pagedir, addr));
+			pagedir_clear_page(thread_current()->pagedir,addr);
+		}
+				
+		if (read_bytes <= PGSIZE)
+			break;
+
+
+		read_bytes -= PGSIZE;
+		ofs += PGSIZE;
+		addr += PGSIZE;
+	}
+	file_close(me->file);
+	lock_release(&filesys_lock);
+	free(me);
+
+}

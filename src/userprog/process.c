@@ -295,6 +295,14 @@ process_exit (void)
 	  free(fe);
   }
   filesys_lock_release();
+
+  struct mmap_elem *me;
+
+  while(!list_empty(&thread_current()->mmap_list)) {
+      e = list_begin(&thread_current()->mmap_list);
+      me = list_entry(e, struct mmap_elem, elem);
+	  munmap(me->mapid);
+  }
   
 
   struct child_elem *ce;
