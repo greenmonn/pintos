@@ -27,12 +27,10 @@ make_page(void *uaddr, enum page_location place)
 
 /* 1. page type : FILE */
 
-bool
+void
 page_set_file(struct hash *pages, struct page *page_, struct file *file_,int32_t ofs_, bool writable_, int page_read_bytes_)
 {
-    if (!page_insert(pages, page_)) {
-		return false;
-	}
+    page_insert(pages, page_);
     page_->file = file_;
     page_->ofs = ofs_;
     page_->writable = writable_;
@@ -97,11 +95,10 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUS
     return a->uaddr < b->uaddr;
 }
 
-bool
+void
 page_insert(struct hash *pages, struct page *page)
 {
-    if (!hash_replace(pages, &page->elem)) return false;
-	return true;
+    hash_replace(pages, &page->elem);
     //not allow duplication!
 }
 

@@ -31,14 +31,14 @@ struct page
 
 struct page *make_page(void *uaddr, enum page_location location);
 
-bool page_set_file(struct hash *pages, struct page *pg, struct file *f, int32_t ofs, bool writable, int page_read_bytes);
+void page_set_file(struct hash *pages, struct page *pg, struct file *f, int32_t ofs, bool writable, int page_read_bytes);
 
 struct hash * suppl_pages_create(void);
 unsigned page_hash(const struct hash_elem *p, void *aux UNUSED);
 
 bool page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 
-bool page_insert(struct hash *pages, struct page *page);
+void page_insert(struct hash *pages, struct page *page);
 
 struct page *page_lookup(struct hash *pages, const void *addr);
 
