@@ -85,21 +85,22 @@ frame_alloc(bool zero)
 			filesys_lock_acquire();
 			file_write_at(evicted_page->file,kaddr,evicted_page->page_read_bytes,evicted_page->ofs);
 			filesys_lock_release();
-		}
-		size_t swap_index = swap_out(evicted_addr);
-		//printf("2\n");
-		if(evicted_page != NULL) {
+		} else {
+			size_t swap_index = swap_out(evicted_addr);
+			//printf("2\n");
+			if(evicted_page != NULL) {
 
-			evicted_page->location = SWAP;
-			evicted_page->swap_index = swap_index;
-			evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-		} 
-		else {
-			//printf("NO SUPP PAGE : Make new one!\n");
-			struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
-			new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-			new_swap_page->swap_index = swap_index;
-			page_insert(thread_current()->suppl_pages, new_swap_page);
+				evicted_page->location = SWAP;
+				evicted_page->swap_index = swap_index;
+				evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
+			} 
+			else {
+				//printf("NO SUPP PAGE : Make new one!\n");
+				struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
+				new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
+				new_swap_page->swap_index = swap_index;
+				page_insert(thread_current()->suppl_pages, new_swap_page);
+			}
 		}
 
 		//lock_acquire(&frame_table_lock);
@@ -148,8 +149,9 @@ frame_evict()
    // lock_acquire(&frame_table_lock);
 
     struct list_elem *e = fr_iter;
+	int i = 0;
 	while (true) {
-
+		//printf("%d\n", i++);
         if (e == list_end(&frame_table)) {
             e = list_begin(&frame_table);
         }

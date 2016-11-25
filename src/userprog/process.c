@@ -256,11 +256,9 @@ process_wait (tid_t child_tid UNUSED)
         fe = list_entry(e, struct file_elem, elem);
         free(fe);
     }*/
-
     list_remove(&waiting_child->elem);
-
     free(waiting_child);
-    return status;
+	return status;
 
    /* while (1) {
     }

@@ -45,12 +45,12 @@ userptr_valid(char* ptr) {
 	if (!ptr || !is_user_vaddr(ptr)) 
         return false;
     
-    if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) 
-    {
         struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
 
-            //install page HERE to prevent page fault while accessing file system..
-            int pg_location = (pg == NULL ? -1 : pg->location);
+			
+			if (pg != NULL && pg->location == 0) {
+				return true;
+			}
 
             //if (pg_location == -1 || pg_location == ZERO)
             //    thread_set_priority(PRI_DEFAULT);
@@ -65,84 +65,45 @@ userptr_valid(char* ptr) {
 					//printf("make stack growth\n");
 				}
 			}
-		//printf("flag: %d\n",flag);
 		flag = pg->writable;
 
             //thread_set_priority(PRI_DEFAULT);
 
-            //if (!flag)
-            //     flag = check_stack_and_install(ptr);
-            //printf("syscall %x install complete\n", ptr);
 
-    }
-    else if (pagedir_get_page(thread_current()->pagedir, ptr) != NULL)
-    {   //user virtual address which is not null, and in page table
-        //Here it can be in a code segment
-        flag = true;        
-    } 
-    else {
-        flag = false;
-    }
-	//printf("flag : %d\n", flag);
-    //if (flag == false)
-      //  printf("exit on syscall\n");
+
     return flag;
 }
 
 bool
 userptr_valid_no_code(char* ptr) {
 	bool flag;
-	//printf("ptr: %x\n", ptr);
     if (!ptr || !is_user_vaddr(ptr)) 
-        return false;
-    
-    if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) 
-    {
-        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+		return false;
 
-        //install page HERE to prevent page fault while accessing file system..
-        int pg_location = (pg == NULL ? -1 : pg->location);
-        //if (pg_location == -1 || pg_location == ZERO)
-        //    thread_set_priority(PRI_DEFAULT);
-        //if (pg_location == SWAP || pg_location == FILE)
-        //   thread_set_priority(PRI_MIN);
-		
-        flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
 
-		if (!flag) {
-			if (((void*)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t) ((void*)ptr)) <= STACK_SIZE) {
-				flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-				//printf("make stack growth\n");
-			}
+	if (pg != NULL && pg->location == 0) {
+		return true;
+	}
+
+	//if (pg_location == -1 || pg_location == ZERO)
+	//    thread_set_priority(PRI_DEFAULT);
+	//if (pg_location == SWAP || pg_location == FILE)
+	//   thread_set_priority(PRI_MIN);
+
+	flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+	if (!flag) {	
+		if (((void*)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t) ((void*)ptr)) <= STACK_SIZE) {	
+			flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+			//printf("make stack growth\n");
 		}
+	}
+	pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+	flag = pg->writable;
+	//thread_set_priority(PRI_DEFAULT);
 
-		pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
-		flag = pg->writable;
-		//printf("flag: %d\n",flag);
-        //thread_set_priority(PRI_DEFAULT);
-
-    }
-    else if (pagedir_get_page(thread_current()->pagedir, ptr) != NULL)
-    {   //user virtual address which is not null, and in page table
-        //Check whether it's a code segment
-        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
-        if (pg != NULL) {
-            if (pg->writable == false) {
-                //printf("cannot write to this buffer\n");
-                flag = false;
-            }
-            else
-               flag = true;
-        }
-        else {
-            flag = true;
-        }
-    } 
-    else {
-        flag = false;
-    }
-
-	//printf("flag : %d\n", flag);
+	
+	//printf("end\n");
     return flag;
 }
 
@@ -500,9 +461,8 @@ int read(int fd, void *buffer, unsigned size)
     }
 
     //read from file
-    //printf("System call read\n");
 	lock_acquire(&filesys_lock);
-    struct file *file_to_read = find_file_desc(fd);
+	struct file *file_to_read = find_file_desc(fd);
     //printf("found file desc\n");
     if(file_to_read) {
     	//lock_acquire(&filesys_lock);
@@ -511,7 +471,6 @@ int read(int fd, void *buffer, unsigned size)
 		return ret;
     }
 	lock_release(&filesys_lock);
-    //printf("read end\n");
     return -1;
 }
 
