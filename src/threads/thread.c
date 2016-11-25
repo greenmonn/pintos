@@ -220,6 +220,9 @@ thread_create (const char *name, int priority,
   list_init(&t->file_list);
   t->parent = thread_current();
   list_push_back(&thread_current()->child_list, &child->elem);
+
+  t->mapid = 0;
+  list_init(&t->mmap_list);
   }
 
   /* Stack frame for kernel_thread(). */

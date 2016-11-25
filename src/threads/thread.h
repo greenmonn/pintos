@@ -108,6 +108,9 @@ struct thread
     /* File Descriptor Table */
     int fd_num;
     struct list file_list;
+	
+	int mapid;
+	struct list mmap_list;
 
     struct thread *parent;
     int is_child_load;
