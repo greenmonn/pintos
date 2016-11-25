@@ -84,6 +84,8 @@ userptr_valid(char* ptr) {
         flag = false;
     }
 	//printf("flag : %d\n", flag);
+    //if (flag == false)
+      //  printf("exit on syscall\n");
     return flag;
 }
 
@@ -582,20 +584,22 @@ int mmap (int fd, void *addr) {
 	int32_t ofs = 0;
 	int32_t size = read_bytes;
 	thread_current()->mapid++;
-	struct mmap_elem *m = malloc(sizeof(struct mmap_elem));
-	m->file = file_to_mmap;
-	m->addr = addr;
-	m->read_bytes = size;
-	m->mapid = thread_current()->mapid;
-	list_push_back(&thread_current()->mmap_list, &m->elem);
+    uint32_t first_addr = addr;
+
 
 	while (read_bytes > 0)
 	{
 		uint32_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+        //printf("mmap addr : %x\n", addr);
 		uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
 		if (page_lookup(thread_current()->suppl_pages, addr)) {
-			munmap(thread_current()->mapid);
-			printf("1\n");
+			//munmap(thread_current()->mapid);
+            while(addr>first_addr) {
+                addr -=PGSIZE;
+                struct page *pg = page_lookup(thread_current()->suppl_pages, addr);
+                hash_delete(thread_current()->suppl_pages, &pg->elem);
+            }
+			//printf("1\n");
 			return -1;
 
 		}
@@ -608,6 +612,12 @@ int mmap (int fd, void *addr) {
 		ofs += page_read_bytes;
 		addr += PGSIZE;
 	}
+	struct mmap_elem *m = malloc(sizeof(struct mmap_elem));
+	m->file = file_to_mmap;
+	m->addr = addr;
+	m->read_bytes = size;
+	m->mapid = thread_current()->mapid;
+	list_push_back(&thread_current()->mmap_list, &m->elem);
 
 	
 
