@@ -143,42 +143,101 @@ frame_evict()
 {	
 	//printf("frame_evict()\n");
 
-	void * kaddr;
-    struct frame *fr = NULL;
+	//void * kaddr;
+    struct frame *fr;
 
    // lock_acquire(&frame_table_lock);
 
     struct list_elem *e = fr_iter;
 	int i = 0;
+	/*for (e = fr_iter; e != fr_iter; e = list_next(e)) {
+		if (e == list_end(&frame_table)) {
+			e = list_begin(&frame_table);
+		}
+		fr = list_entry(e, struct frame,elem);
+		if (fr->pin) continue;
+		if ((*(fr->pte) & PTE_D) != 0 && (*(fr->pte) & PTE_A) ==0) {
+			fr->pin = true;
+			e = list_next(e);
+			fr_iter = e;
+			return fr;
+		}
+		*(fr->pte) &= ~PTE_A;
+	}*/
+
 	while (true) {
 		//printf("%d\n", i++);
         if (e == list_end(&frame_table)) {
             e = list_begin(&frame_table);
+			//i++;
         }
 
 		fr = list_entry(e, struct frame, elem);
-		if (fr->pte != NULL && (*(fr->pte) & PTE_D) == 0) {
-            //should never evict (read-only)
-			//*(fr->pte) &= ~PTE_D;
-			e = list_next(e);
-		} else if (fr->pte != NULL && (*(fr->pte) & PTE_A) != 0) {
-			*(fr->pte) &= ~PTE_A;
-            //*(fr->pte) &= ~PTE_D;
+		
+		if (fr->pin) {
 			e = list_next(e);
 		} else {
-            if (fr->pte != NULL /*&& fr->pin == false*/) {
-                fr->pin = true;
-			    //kaddr = ptov(fr->addr);
-                e = list_next(e);
-                //printf("eviction : %x %d\n", fr->upage, eviction_cnt++);
-			    break;
-            }
-            else {
-                e = list_next(e); 
-            }
+			/*if (i>1) {
+				fr->pin = true;
+				e = list_next(e);
+				fr_iter = e;
+				return fr;
+			}*/
+			if (/*(*(fr->pte) & PTE_D) != 0 &&*/ (*(fr->pte) & PTE_A) == 0) {
+				fr->pin = true;
+				e = list_next(e);
+				//fr_iter = e;
+				break;
+			}  
+			if ((*(fr->pte) & PTE_A) != 0) {
+				*(fr->pte) &= ~PTE_A;
+			}
+			e = list_next(e);
+		}
+		
+    }/*
+	for (e = fr_iter; e != fr_iter; e = list_next(e)) {
+		if (e == list_end(&frame_table)) {
+			e = list_begin(&frame_table);
+		}
+
+		fr = list_entry(e, struct frame,elem);
+		if (fr->pin) continue;
+		if ((*(fr->pte) & PTE_A) == 0) {
+			fr->pin = true;
+			e = list_next(e);
+			fr_iter = e;
+			return fr;
+		}
+	}
+	return fr;*/
+	
+	/*while (true) {
+		//printf("%d\n", i++);
+        if (e == list_end(&frame_table)) {
+            e = list_begin(&frame_table);
+			//i++;
         }
-    }
-    fr_iter = e;
+
+		fr = list_entry(e, struct frame, elem);
+		
+		if (fr->pin) {
+			e = list_next(e);
+		} else {
+			
+			if ((*(fr->pte) & PTE_D) != 0 && (*(fr->pte) & PTE_A) == 0) {
+				fr->pin = true;
+				e = list_next(e);
+				break;
+			}  
+			if ((*(fr->pte) & PTE_A) != 0) {
+				*(fr->pte) &= ~PTE_A;
+			}
+			e = list_next(e);
+		}
+		
+    }*/
+   fr_iter = e;
    // lock_release(&frame_table_lock);
 	return fr; 
 }

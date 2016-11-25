@@ -7,7 +7,7 @@
 #include "threads/vaddr.h"
 #include "vm/page.h"
 #include "vm/frame.h"
-
+#include "threads/pte.h"
 
 #define ARG_MAX 3
 #define STACK_SIZE 262144
@@ -37,39 +37,22 @@ syscall_init (void)
 bool
 userptr_valid(char* ptr) {
     bool flag;
-	//printf("ptr: %x\n", ((void*)ptr));
-	//printf("physbase: %x\n", PHYS_BASE);
-	//printf("stack ptr: %u\n",(PHYS_BASE - ((void *)ptr)) );
-    //printf("stack ptr1: %u\n",((size_t) (PHYS_BASE - ((void *)ptr))));
-	//printf("stack_size: %d\n", STACK_SIZE);
 	if (!ptr || !is_user_vaddr(ptr)) 
-        return false;
-    
-        struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+		return false;
 
-			
-			if (pg != NULL && pg->location == 0) {
-				return true;
-			}
-
-            //if (pg_location == -1 || pg_location == ZERO)
-            //    thread_set_priority(PRI_DEFAULT);
-            //if (pg_location == SWAP || pg_location == FILE)
-            //    thread_set_priority(PRI_MIN);
-
-            flag = install_suppl_page(thread_current()->suppl_pages, pg, ptr);
-			
-			//if (!flag) {
-			//	if (((void *)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t)((void *)ptr)) <= STACK_SIZE) {
-			//		flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-					//printf("make stack growth\n");
-			//	}
-		//	}
-		//flag = pg->writable;
-
-            //thread_set_priority(PRI_DEFAULT);
+	if (pagedir_get_page(thread_current()->pagedir, ptr)) {
+		return true;
+	}
 
 
+	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+
+	/*if (pg != NULL && pg->location == 0) {
+		return true;
+	}*/
+
+
+	flag = install_suppl_page(thread_current()->suppl_pages, pg, ptr);
 
     return flag;
 }
@@ -79,60 +62,50 @@ userptr_valid_no_code(char* ptr) {
 	bool flag;
     if (!ptr || !is_user_vaddr(ptr)) 
 		return false;
-
-	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
-
-	if (pg != NULL && pg->location == 0 && pg->writable) {
-		return true;
+	
+	uint32_t* pte;
+	if (pagedir_get_page(thread_current()->pagedir,ptr))
+ 	{
+		pte = lookup_page(thread_current()->pagedir, ptr, false);
+		if((*pte & PTE_W) != 0) {
+			return true;
+		} 
 	}
 
-	//if (pg_location == -1 || pg_location == ZERO)
-	//    thread_set_priority(PRI_DEFAULT);
-	//if (pg_location == SWAP || pg_location == FILE)
-	//   thread_set_priority(PRI_MIN);
-
-	flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-	//if (!flag) {	
-	//	if (((void*)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t) ((void*)ptr)) <= STACK_SIZE) {	
-	//		flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
-	//		//printf("make stack growth\n");
-	//	}
-//	}
-	//pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
-	//if (pg != NULL)
-    //    flag = pg->writable;
-	//thread_set_priority(PRI_DEFAULT);
-
 	
-	//printf("end\n");
+	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+
+	/*if (pg != NULL && pg->location == 0 && pg->writable) {
+		return true;
+	}*/
+
+	flag = install_suppl_page(thread_current()->suppl_pages, pg, ptr);
+
     return flag;
 }
 
 
 bool
 userbuf_valid(char* ptr, int bufsize) {
-    int flag = 1;
     int i;
     for(i=0; i<bufsize; i++) {
         if (!userptr_valid(ptr+i)) {
-            flag = 0;
-            break;
+            return false;
+
         }
     }
-    return flag;
+    return true;
 }
 
 bool
 userbuf_valid_no_code(char* ptr, int bufsize) {
-    int flag = 1;
     int i;
     for(i=0; i<bufsize; i++) {
         if (!userptr_valid_no_code(ptr+i)) {
-            flag = 0;
-            break;
+            return false;
         }
     }
-    return flag;
+    return true;
 }
     
         

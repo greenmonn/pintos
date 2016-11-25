@@ -195,18 +195,18 @@ page_fault (struct intr_frame *f)
   page_fault_cnt++;
 
   /* Determine cause. */
-  not_present = (f->error_code & PF_P) == 0;
-  write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
+  //not_present = (f->error_code & PF_P) == 0;
+  //write = (f->error_code & PF_W) != 0;
+  //user = (f->error_code & PF_U) != 0;
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
 
-  if (user) thread_current()->esp = f->esp;
+  thread_current()->esp = f->esp;
 
   //printf("*\n page fault : %x enter\n", fault_addr);
-  if (not_present && is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
+  if (is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
       //TODO 1 : find given faulted address in  supplemental page table of current thread
       struct hash *supp = thread_current ()->suppl_pages;
       uint8_t *kpage = NULL;
@@ -218,10 +218,10 @@ page_fault (struct intr_frame *f)
 
       //TODO : SYNCHRONIZATION - page fault need I/O or not
       //should handle I/O-required-pagefault later(after other processes finish)
-      bool use_IO;
+      //bool use_IO;
       //thread_current()->esp = f->esp; //for stack growth
        
-      int pg_location = (pg ==  NULL ? -1 : pg->location);
+      //int pg_location = (pg ==  NULL ? -1 : pg->location);
 
       /*
 

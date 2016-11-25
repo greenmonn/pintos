@@ -719,16 +719,18 @@ static bool setup_stack (void **esp, char *f_name)
   struct frame *newfr = frame_alloc(true);
   newfr->pin = false;
   kpage = ptov(newfr->addr);
-  if (kpage != NULL) 
-    {
+  /*if (kpage != NULL) 
+    {*/
 
       struct page *stk_pg = make_page(((uint8_t *) PHYS_BASE) - PGSIZE, FRAME);
-	  stk_pg->writable= true;
-	  stk_pg->file = NULL;
+	  //stk_pg->writable= true;
+	  //stk_pg->file = NULL;
 
       page_insert(thread_current()->suppl_pages, stk_pg);
       
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, newfr, true);
+      success = install_page (stk_pg, newfr, true);
+	  //pagedir_set_accessed(thread_current()->pagedir, stk_pg->uaddr, true);
+	  //pagedir_set_dirty(thread_current()->pagedir,stk_pg->uaddr,false);
 
       if (success) {
         *esp = PHYS_BASE;
@@ -737,7 +739,7 @@ static bool setup_stack (void **esp, char *f_name)
       }
       else
         frame_free(kpage);
-    }
+    //}
 
   /* filename parse */
   if (success) { 
