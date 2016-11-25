@@ -9,7 +9,7 @@
 #mmap-null mmap-over-code mmap-over-data mmap-over-stk mmap-remove	\
 #mmap-zero)
 
-tests/vm_TESTS = $(addprefix tests/vm/,mmap-read	\
+tests/vm_TESTS = $(addprefix tests/vm/,page-merge-stk page-merge-mm mmap-read	\
 mmap-close mmap-unmap mmap-overlap mmap-twice mmap-write mmap-exit	\
 mmap-shuffle mmap-bad-fd mmap-clean mmap-inherit mmap-misalign		\
 mmap-null mmap-over-code mmap-over-data mmap-over-stk mmap-remove	\
@@ -37,10 +37,10 @@ child-sort child-qsort child-qsort-mm child-mm-wrt child-inherit)
 #tests/lib.c tests/main.c
 #tests/vm/page-merge-par_SRC = tests/vm/page-merge-par.c \
 #tests/vm/parallel-merge.c tests/arc4.c tests/lib.c tests/main.c
-#tests/vm/page-merge-stk_SRC = tests/vm/page-merge-stk.c \
-#tests/vm/parallel-merge.c tests/arc4.c tests/lib.c tests/main.c
-#tests/vm/page-merge-mm_SRC = tests/vm/page-merge-mm.c \
-#tests/vm/parallel-merge.c tests/arc4.c tests/lib.c tests/main.c
+tests/vm/page-merge-stk_SRC = tests/vm/page-merge-stk.c \
+tests/vm/parallel-merge.c tests/arc4.c tests/lib.c tests/main.c
+tests/vm/page-merge-mm_SRC = tests/vm/page-merge-mm.c \
+tests/vm/parallel-merge.c tests/arc4.c tests/lib.c tests/main.c
 #tests/vm/page-shuffle_SRC = tests/vm/page-shuffle.c tests/arc4.c	\
 #tests/cksum.c tests/lib.c tests/main.c
 tests/vm/mmap-read_SRC = tests/vm/mmap-read.c tests/lib.c tests/main.c
@@ -85,8 +85,8 @@ tests/vm/mmap-exit_PUTFILES = tests/vm/child-mm-wrt
 #tests/vm/page-parallel_PUTFILES = tests/vm/child-linear
 #tests/vm/page-merge-seq_PUTFILES = tests/vm/child-sort
 #tests/vm/page-merge-par_PUTFILES = tests/vm/child-sort
-#tests/vm/page-merge-stk_PUTFILES = tests/vm/child-qsort
-#tests/vm/page-merge-mm_PUTFILES = tests/vm/child-qsort-mm
+tests/vm/page-merge-stk_PUTFILES = tests/vm/child-qsort
+tests/vm/page-merge-mm_PUTFILES = tests/vm/child-qsort-mm
 tests/vm/mmap-clean_PUTFILES = tests/vm/sample.txt
 tests/vm/mmap-inherit_PUTFILES = tests/vm/sample.txt tests/vm/child-inherit
 tests/vm/mmap-misalign_PUTFILES = tests/vm/sample.txt
@@ -98,7 +98,7 @@ tests/vm/mmap-remove_PUTFILES = tests/vm/sample.txt
 
 #tests/vm/page-linear.output: TIMEOUT = 300
 #tests/vm/page-shuffle.output: TIMEOUT = 600
-#tests/vm/mmap-shuffle.output: TIMEOUT = 600
+tests/vm/mmap-shuffle.output: TIMEOUT = 600
 #tests/vm/page-merge-seq.output: TIMEOUT = 600
 #tests/vm/page-merge-par.output: TIMEOUT = 600
 

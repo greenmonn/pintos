@@ -614,7 +614,7 @@ int mmap (int fd, void *addr) {
 	}
 	struct mmap_elem *m = malloc(sizeof(struct mmap_elem));
 	m->file = file_to_mmap;
-	m->addr = addr;
+	m->addr = first_addr;
 	m->read_bytes = size;
 	m->mapid = thread_current()->mapid;
 	list_push_back(&thread_current()->mmap_list, &m->elem);
