@@ -8,7 +8,6 @@
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
-#include "vm/frame.h"
 
 
 /* Number of page faults processed. */
@@ -204,7 +203,7 @@ page_fault (struct intr_frame *f)
       //TODO 1 : find given faulted address in  supplemental page table of current thread
       bool use_IO = true;
       struct hash *supp = thread_current ()->suppl_pages;
-      uint8_t *kpage = NULL;
+      uint8_t *kpage;
       uint8_t *upage = pg_round_down(fault_addr);
       struct page *pg = page_lookup(supp, upage);
       //printf("suppl. page addr %x\n", pg);
@@ -273,14 +272,9 @@ page_fault (struct intr_frame *f)
               else if (success == -1) { //Frame allocation fail
                   success = 0;
               }
-              // }
-              //although success == 0, page fault would not terminate program
-              //success = 1;
-             // if (kpage != NULL) {
-            //      struct frame *created_fr = frame_find(kpage);
-              //    created_fr->pin = false;
-           // }
-
+         // }
+          //although success == 0, page fault would not terminate program
+          //success = 1;
       }
       
       else {
@@ -360,10 +354,8 @@ page_fault (struct intr_frame *f)
           //printf("We exit on page_fault : fault_addr %x\n", fault_addr);
           exit(-1);
       }
-      
-      
-  }
 
+  }
 
     if (success == 2) {  //success value unchanged
       printf ("Page fault at %p: %s error %s page in %s context.\n",

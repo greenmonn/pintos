@@ -6,7 +6,6 @@
 
 struct list frame_table;
 struct lock frame_lock;
-struct lock frame_table_lock;
 
 struct frame *
 make_frame(void *addr, struct thread *owner)
@@ -26,7 +25,6 @@ void
 set_frame(struct frame *fr, uint32_t *pte)
 {
     fr->pte = pte;
-    //fr->pin = false;
 }
 
 void
@@ -34,7 +32,6 @@ frame_table_init(void)
 {
     list_init(&frame_table);
     lock_init(&frame_lock);
-    lock_init(&frame_table_lock);
 }
 
 struct frame *
@@ -42,19 +39,16 @@ frame_find(void *kaddr)
 {
     struct list_elem *e;
     void *addr = vtop(kaddr);
-    lock_acquire(&frame_table_lock);
     for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
     {
         struct frame *fr = list_entry(e, struct frame, elem);
         if (fr->addr == addr) {
             //printf("find addr : %x\n", fr->addr);
-            lock_release(&frame_table_lock);
 
             return fr;
         }
         
     }
-    lock_release(&frame_table_lock);
     return NULL;
 }
 void *
@@ -90,20 +84,17 @@ frame_alloc(bool zero)
             page_insert(thread_current()->suppl_pages, new_swap_page);
         }
 
-		//palloc_free_page(evicted_addr);
+		palloc_free_page(evicted_addr);
         list_remove(&evicted_fr->elem);
 
         free(evicted_fr);
 
-        palloc_free_page(evicted_addr);
         //REtry palloc!
         kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
         ASSERT(evicted_addr == kaddr);
     }
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
-    lock_acquire(&frame_table_lock);
     list_push_back(&frame_table, &new_fr->elem);
-    lock_release(&frame_table_lock);
 
     lock_release(&frame_lock);
     return kaddr;
@@ -113,12 +104,11 @@ void
 frame_free(void *kaddr) //delete frame from list + free the frame!
 {
 	lock_acquire(&frame_lock);
-    //palloc_free_page(kaddr);
+    palloc_free_page(kaddr);
 
     struct frame *fr_to_free = frame_find(kaddr);
     list_remove(&fr_to_free->elem);
     free(fr_to_free);
-    palloc_free_page(kaddr);
 	lock_release(&frame_lock);
 }
 
@@ -129,7 +119,6 @@ frame_evict()
     struct list_elem *e;
 	void * kaddr;
     struct frame *fr = NULL;
-    lock_acquire(&frame_table_lock);
 	while (!list_empty(&frame_table)) {
 		e = list_pop_front(&frame_table);
 		fr = list_entry(e, struct frame, elem);
@@ -142,7 +131,6 @@ frame_evict()
 			list_push_back(&frame_table, e);
 		} else {
             if (fr->pte != NULL && fr->pin == false) {
-                fr->pin = true;
 			    kaddr = ptov(fr->addr);
                 list_push_back(&frame_table, e);
 			    break;
@@ -152,9 +140,7 @@ frame_evict()
             }
 		}
 	}
-    lock_release(&frame_table_lock);
     ASSERT(fr != NULL);
-    //fr->pin = true;
 	return fr; 
 }
 
