@@ -10,6 +10,7 @@
 
 
 #define ARG_MAX 3
+#define STACK_SIZE 262144
 
 static void syscall_handler (struct intr_frame *);
 
@@ -36,7 +37,12 @@ syscall_init (void)
 bool
 userptr_valid(char* ptr) {
     bool flag;
-    if (!ptr || !is_user_vaddr(ptr)) 
+	//printf("ptr: %x\n", ((void*)ptr));
+	//printf("physbase: %x\n", PHYS_BASE);
+	//printf("stack ptr: %u\n",(PHYS_BASE - ((void *)ptr)) );
+    //printf("stack ptr1: %u\n",((size_t) (PHYS_BASE - ((void *)ptr))));
+	//printf("stack_size: %d\n", STACK_SIZE);
+	if (!ptr || !is_user_vaddr(ptr)) 
         return false;
     
     if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) 
@@ -46,14 +52,23 @@ userptr_valid(char* ptr) {
             //install page HERE to prevent page fault while accessing file system..
             int pg_location = (pg == NULL ? -1 : pg->location);
 
-            if (pg_location == -1 || pg_location == ZERO)
-                thread_set_priority(PRI_DEFAULT);
-            if (pg_location == SWAP || pg_location == FILE)
-                thread_set_priority(PRI_MIN);
+            //if (pg_location == -1 || pg_location == ZERO)
+            //    thread_set_priority(PRI_DEFAULT);
+            //if (pg_location == SWAP || pg_location == FILE)
+            //    thread_set_priority(PRI_MIN);
 
             flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+			
+			if (!flag) {
+				if (((void *)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t)((void *)ptr)) <= STACK_SIZE) {
+					flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+					//printf("make stack growth\n");
+				}
+			}
+		//printf("flag: %d\n",flag);
+		flag = pg->writable;
 
-            thread_set_priority(PRI_DEFAULT);
+            //thread_set_priority(PRI_DEFAULT);
 
             //if (!flag)
             //     flag = check_stack_and_install(ptr);
@@ -68,12 +83,14 @@ userptr_valid(char* ptr) {
     else {
         flag = false;
     }
+	//printf("flag : %d\n", flag);
     return flag;
 }
 
 bool
 userptr_valid_no_code(char* ptr) {
-    bool flag;
+	bool flag;
+	//printf("ptr: %x\n", ptr);
     if (!ptr || !is_user_vaddr(ptr)) 
         return false;
     
@@ -83,15 +100,24 @@ userptr_valid_no_code(char* ptr) {
 
         //install page HERE to prevent page fault while accessing file system..
         int pg_location = (pg == NULL ? -1 : pg->location);
-
-        if (pg_location == -1 || pg_location == ZERO)
-            thread_set_priority(PRI_DEFAULT);
-        if (pg_location == SWAP || pg_location == FILE)
-            thread_set_priority(PRI_MIN);
-
+        //if (pg_location == -1 || pg_location == ZERO)
+        //    thread_set_priority(PRI_DEFAULT);
+        //if (pg_location == SWAP || pg_location == FILE)
+        //   thread_set_priority(PRI_MIN);
+		
         flag = install_suppl_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
 
-        thread_set_priority(PRI_DEFAULT);
+		if (!flag) {
+			if (((void*)ptr) >= thread_current()->esp - 32 && ((uint8_t) (PHYS_BASE)) - ((uint8_t) ((void*)ptr)) <= STACK_SIZE) {
+				flag = install_suppl_stack_page(thread_current()->suppl_pages, pg, pg_round_down(ptr));
+				//printf("make stack growth\n");
+			}
+		}
+
+		pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
+		flag = pg->writable;
+		//printf("flag: %d\n",flag);
+        //thread_set_priority(PRI_DEFAULT);
 
     }
     else if (pagedir_get_page(thread_current()->pagedir, ptr) != NULL)
@@ -104,7 +130,7 @@ userptr_valid_no_code(char* ptr) {
                 flag = false;
             }
             else
-                flag = true;
+               flag = true;
         }
         else {
             flag = true;
@@ -113,6 +139,8 @@ userptr_valid_no_code(char* ptr) {
     else {
         flag = false;
     }
+
+	//printf("flag : %d\n", flag);
     return flag;
 }
 
@@ -170,7 +198,7 @@ syscall_handler (struct intr_frame *f)
   if (!userptr_valid(f->esp)) {
       exit(-1);
   }
-
+  //printf("wow\n");
   switch (*(int*)(f->esp)) 
   {
     case SYS_HALT: 
@@ -369,6 +397,7 @@ void exit(int status) {
 
     }
     //printf("called exit on thread %x : %s\n", thread_current(), thread_current()->name);
+	printf("%s: exit(%d)\n", thread_current()->name, status);
 	thread_current()->proc_status = status;
 	thread_exit();
     
@@ -415,7 +444,7 @@ int write(int fd, const void *buffer, unsigned size)
         putbuf((const char*) buf, size);
         return size;
     }
-
+	lock_acquire(&filesys_lock);
     //write to file
     struct file *file_to_write = find_file_desc(fd);
     //char* filename = find_file_name(fd);
@@ -428,11 +457,12 @@ int write(int fd, const void *buffer, unsigned size)
     */
 
     if (file_to_write) {
-        lock_acquire(&filesys_lock);
+        //lock_acquire(&filesys_lock);
         int ret = file_write(file_to_write, (const void*)buffer, size);
         lock_release(&filesys_lock);
 		return ret;
     }
+	lock_release(&filesys_lock);
     return 0;
 
 }
@@ -457,50 +487,54 @@ int read(int fd, void *buffer, unsigned size)
 
     //read from file
     //printf("System call read\n");
-
+	lock_acquire(&filesys_lock);
     struct file *file_to_read = find_file_desc(fd);
     //printf("found file desc\n");
     if(file_to_read) {
-    	lock_acquire(&filesys_lock);
+    	//lock_acquire(&filesys_lock);
         int ret =  file_read(file_to_read, (void *)buffer, (int)size);
         lock_release(&filesys_lock);
 		return ret;
     }
+	lock_release(&filesys_lock);
     //printf("read end\n");
     return -1;
 }
 
 int filesize(int fd) {
-
+	lock_acquire(&filesys_lock);
     struct file *target = find_file_desc(fd);
 
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
     int ret = file_length(target);
     lock_release(&filesys_lock);
 	return ret;
 }
 
 void seek(int fd, unsigned position) {
-
+	lock_acquire(&filesys_lock);
     struct file *file_to_seek = find_file_desc(fd);
     if(!file_to_seek) {
+		lock_release(&filesys_lock);
 		exit(-1);
 	}
 
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
     file_seek(file_to_seek, position);
 	lock_release(&filesys_lock);
 }
 
 int tell(int fd) {
-
+	//printf("wow\n");
+	lock_acquire(&filesys_lock);
     struct file *file_to_tell = find_file_desc(fd);
 
     if(!file_to_tell) {
+		lock_release(&filesys_lock);
         exit(-1);
     }
 
-    lock_release(&filesys_lock);
+    //lock_acquire(&filesys_lock);
     int ret = file_tell(file_to_tell);
     lock_release(&filesys_lock);
     return ret;

@@ -143,9 +143,9 @@ start_process (void *f_name)
 
   //printf("EXEC new process : %x, %s\n", thread_current(), thread_current()->name);
   //printf("before load\n");
-  filesys_lock_acquire();
+  //filesys_lock_acquire();
   success = load (f_name, &if_.eip, &if_.esp);
-  filesys_lock_release();
+  //filesys_lock_release();
   //printf("after load\n");
   sema_down(&thread_current()->parent->sema2);
   //printf("parent already woke me up\n");
@@ -242,8 +242,8 @@ process_wait (tid_t child_tid UNUSED)
     }
     */
     if (waiting_child->exit != 1) {
-        struct child_elem *child = find_my_child(child_tid);
-        sema_down(&child->TCB->sema_wait);
+        //struct child_elem *child = find_my_child(child_tid);
+        sema_down(&waiting_child->TCB->sema_wait);
     }
     status = waiting_child->status;
 
@@ -279,6 +279,52 @@ process_exit (void)
      to the kernel-only page directory. */
 
 
+  
+
+  /* FREE FILE DESCRIPTORS */
+  struct list_elem *e;
+  struct file_elem *fe;
+  filesys_lock_acquire();
+  while(!list_empty(&thread_current()->file_list)) {
+      e = list_begin(&thread_current()->file_list);
+      fe = list_entry(e, struct file_elem, elem);
+      //close -> it freed!
+	  //
+	  file_close(fe->name);
+	  e = list_remove(e);
+	  free(fe);
+  }
+  filesys_lock_release();
+  
+
+  struct child_elem *ce;
+  /* Free child list - make children's parent to NULL */
+  while(!list_empty(&thread_current()->child_list)) {
+      e = list_pop_front(&thread_current()->child_list);
+      ce = list_entry(e, struct child_elem, elem);
+      ce->TCB->parent = NULL;
+      free(ce);
+  }
+
+  if (!list_empty(&thread_current()->sema_wait.waiters)) {
+     sema_up(&thread_current()->sema_wait);
+  }
+
+  //close executing file - finally!
+
+  filesys_lock_acquire();
+  struct file *exec = thread_current()->exec_file;
+  if (exec != NULL) {
+    file_allow_write(exec);
+    file_close(exec);
+  }
+  filesys_lock_release();
+
+  //thread_unblock(thread_current()->parent);
+  /*if (thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
+    thread_unblock(thread_current()->parent);*/
+  
+ 
   suppl_pages_destroy(curr->suppl_pages);
   pd = curr->pagedir;
   if (pd != NULL) 
@@ -294,45 +340,10 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-
-
-
-  /* FREE FILE DESCRIPTORS */
-  struct list_elem *e;
-  struct file_elem *fe;
-  while(!list_empty(&thread_current()->file_list)) {
-      e = list_begin(&thread_current()->file_list);
-      fe = list_entry(e, struct file_elem, elem);
-      //close -> it freed!
-	  close(fe->fd);
-  }
-  
-
-  struct child_elem *ce;
-  /* Free child list - make children's parent to NULL */
-  while(!list_empty(&thread_current()->child_list)) {
-      e = list_pop_front(&thread_current()->child_list);
-      ce = list_entry(e, struct child_elem, elem);
-      ce->TCB->parent = NULL;
-      free(ce);
-  }
-
-  //close executing file - finally!
-  struct file *exec = thread_current()->exec_file;
-  if (exec != NULL) {
-    file_allow_write(exec);
-    file_close(exec);
-  }
-
   //struct child_elem *child = find_child(thread_current()->tid);
-  printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc_status);
- 
-  //thread_unblock(thread_current()->parent);
-  /*if (thread_current()->parent != NULL && thread_current()->parent->status == THREAD_BLOCKED)
-    thread_unblock(thread_current()->parent);*/
-  if (!list_empty(&thread_current()->sema_wait.waiters)) {
-     sema_up(&thread_current()->sema_wait);
-  }
+  //printf("%s: exit(%d)\n", thread_current()->name, thread_current()->proc_status);
+
+
 }
 
 /* Sets up the CPU for running user code in the current
@@ -479,7 +490,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
     goto done;
 
   process_activate ();
-
+  filesys_lock_acquire();
   /* Open executable file. */
   file = filesys_open (prog_name);
 
@@ -578,7 +589,7 @@ load (const char *fn_copy,  void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  
+  filesys_lock_release();
   palloc_free_page(prog_name);
   //file_counter--;
   //file_close (file);
@@ -676,8 +687,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       else {
           struct page *new_page = make_page(upage, FILE);
           page_set_file(thread_current ()->suppl_pages, new_page, file, ofs_now, writable, page_read_bytes);
-          if (flags & PF_X == PF_X) //still ambiguous : executable = code segment?
-            new_page->is_code_seg = true;
+          //if (flags & PF_X == PF_X) //still ambiguous : executable = code segment?
+            //new_page->is_code_seg = true;
       }
       //printf("set supplemental page - %x %x %x\n", upage, thread_current()->suppl_pages, new_page);
 
@@ -700,11 +711,15 @@ static bool setup_stack (void **esp, char *f_name)
   uint8_t *kpage;
   bool success = false;
   struct frame *newfr = frame_alloc(true);
+  newfr->pin = false;
   kpage = ptov(newfr->addr);
   if (kpage != NULL) 
     {
 
       struct page *stk_pg = make_page(((uint8_t *) PHYS_BASE) - PGSIZE, FRAME);
+	  stk_pg->writable= true;
+	  stk_pg->file = NULL;
+
       page_insert(thread_current()->suppl_pages, stk_pg);
       
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, newfr, true);

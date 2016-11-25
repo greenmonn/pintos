@@ -2,7 +2,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
-#include "userprog/syscall.h"
+//#include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/palloc.h"
@@ -10,6 +10,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 
+#define STACK_SIZE 262144
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -202,21 +203,23 @@ page_fault (struct intr_frame *f)
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
 
+  if (user) thread_current()->esp = fault_addr;
+
   //printf("*\n page fault : %x enter\n", fault_addr);
-  if (is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
+  if (not_present && is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
       //TODO 1 : find given faulted address in  supplemental page table of current thread
       struct hash *supp = thread_current ()->suppl_pages;
       uint8_t *kpage = NULL;
       uint8_t *upage = pg_round_down(fault_addr);
       struct page *pg = page_lookup(supp, upage);
-      size_t page_read_bytes;
-      size_t page_zero_bytes;
+      //size_t page_read_bytes;
+      //size_t page_zero_bytes;
 
 
       //TODO : SYNCHRONIZATION - page fault need I/O or not
       //should handle I/O-required-pagefault later(after other processes finish)
       bool use_IO;
-      thread_current()->esp = f->esp; //for stack growth
+      //thread_current()->esp = f->esp; //for stack growth
        
       int pg_location = (pg ==  NULL ? -1 : pg->location);
 
@@ -239,13 +242,19 @@ page_fault (struct intr_frame *f)
       sema_up(&IO_mutex);
       */
 
-      if (pg_location == -1 || pg_location == ZERO)
-          thread_set_priority(PRI_DEFAULT);
+      //if (pg_location == -1 || pg_location == ZERO)
+      //    thread_set_priority(PRI_DEFAULT);
 
-      if (pg_location == SWAP || pg_location == FILE)
-          thread_set_priority(PRI_MIN);
+      //if (pg_location == SWAP || pg_location == FILE)
+      //    thread_set_priority(PRI_MIN);
 
-      success = install_suppl_page(supp, pg, fault_addr);
+      success = install_suppl_page(supp, pg, upage);
+
+	  if (!success) {
+	  	if (fault_addr >= f->esp -32 && ((uint8_t) (PHYS_BASE)) -((uint8_t) (fault_addr)) <= STACK_SIZE) {
+			success = install_suppl_stack_page(supp,pg,upage);
+		}
+	  }
 /*
       sema_down(&IO_mutex);
       if (!use_IO) {
@@ -261,14 +270,15 @@ page_fault (struct intr_frame *f)
       }
       sema_up(&IO_mutex);
 */
-      thread_set_priority(PRI_MAX);
+      //thread_set_priority(PRI_MAX);
       //printf("page fault : %x complete\n", fault_addr);
-
+	  
+	 
 
       if (!success) {
           //printf("We exit on page_fault : fault_addr %x\n", fault_addr);
           exit(-1);
-      }    
+      }
       
   }
 

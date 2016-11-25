@@ -81,6 +81,7 @@ frame_alloc(bool zero)
 
        pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
 		size_t swap_index = swap_out(evicted_addr);
+		//printf("2\n");
         if(evicted_page != NULL) {
 
             evicted_page->location = SWAP;
@@ -95,9 +96,9 @@ frame_alloc(bool zero)
             page_insert(thread_current()->suppl_pages, new_swap_page);
         }
 
-        lock_acquire(&frame_table_lock);
+        //lock_acquire(&frame_table_lock);
         list_remove(&evicted_fr->elem);
-        lock_release(&frame_table_lock);
+        //lock_release(&frame_table_lock);
 
         free(evicted_fr);
 
@@ -107,9 +108,9 @@ frame_alloc(bool zero)
         ASSERT(evicted_addr == kaddr);
     }
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
-    lock_acquire(&frame_table_lock);
+    //lock_acquire(&frame_table_lock);
     list_push_back(&frame_table, &new_fr->elem);
-    lock_release(&frame_table_lock);
+    //lock_release(&frame_table_lock);
 
     lock_release(&frame_lock);
     return new_fr;
@@ -122,9 +123,9 @@ frame_free(void *kaddr) //delete frame from list + free the frame!
     //palloc_free_page(kaddr);
 
     struct frame *fr_to_free = frame_find(kaddr);
-    lock_acquire(&frame_table_lock);
+    //lock_acquire(&frame_table_lock);
     list_remove(&fr_to_free->elem);
-    lock_release(&frame_table_lock);
+    //lock_release(&frame_table_lock);
     free(fr_to_free);
     palloc_free_page(kaddr);
 	lock_release(&frame_lock);
@@ -157,7 +158,7 @@ frame_evict()
             //*(fr->pte) &= ~PTE_D;
 			e = list_next(e);
 		} else {
-            if (fr->pte != NULL && fr->pin == false) {
+            if (fr->pte != NULL /*&& fr->pin == false*/) {
                 fr->pin = true;
 			    //kaddr = ptov(fr->addr);
                 e = list_next(e);
