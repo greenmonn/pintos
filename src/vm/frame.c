@@ -70,6 +70,7 @@ frame_alloc(bool zero)
 	if (!kaddr) {   //Evict a frame and make it as MINE!
 		//printf("frame_alloc() : palloc failed\n");
 		struct frame *evicted_fr = frame_evict();
+        ASSERT(evicted_fr != NULL);
 		void *evicted_addr = ptov(evicted_fr->addr);
 		//printf("CHOSEN VICTOM : on %x mapped to UADDR %x\n", evicted_addr, evicted_fr->upage);
 
@@ -83,24 +84,24 @@ frame_alloc(bool zero)
 		pagedir_clear_page((evicted_fr->owner)->pagedir, evicted_fr->upage);
 		if (evicted_page->location == MMAP) {
 			filesys_lock_acquire();
-			file_write_at(evicted_page->file,kaddr,evicted_page->page_read_bytes,evicted_page->ofs);
+			file_write_at(evicted_page->file,evicted_addr,evicted_page->page_read_bytes,evicted_page->ofs);
 			filesys_lock_release();
 		} else {
 			size_t swap_index = swap_out(evicted_addr);
 			//printf("2\n");
-		//	if(evicted_page != NULL) {
+			if(evicted_page != NULL) {
 
 				evicted_page->location = SWAP;
 				evicted_page->swap_index = swap_index;
 				evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-		//	} 
-		/*	else {
-				printf("NO SUPP PAGE : Make new one!\n");
+			} 
+			else {
+				//printf("NO SUPP PAGE : Make new one!\n");
 				struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
 				new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
 				new_swap_page->swap_index = swap_index;
 				page_insert(thread_current()->suppl_pages, new_swap_page);
-			}*/
+			}
 		}
 
 		//lock_acquire(&frame_table_lock);
@@ -148,7 +149,7 @@ frame_evict()
 	//void * kaddr;
     struct frame *fr;
 
-   // lock_acquire(&frame_table_lock);
+   //lock_acquire(&frame_table_lock);
 
     struct list_elem *e = list_begin(&frame_table);
 	//int i = 0;
@@ -160,10 +161,6 @@ frame_evict()
         if (fr->pin) {
             e = list_next(e);
         } else {
-            //if (i>1) {
-             // fr->pin = true;
-             // return fr;
-             // }
             if ((*(fr->pte) & PTE_A) == 0) {
                 fr->pin = true;
                 break;
@@ -178,6 +175,7 @@ frame_evict()
 
     }
 
+    //lock_release(&frame_table_lock);
     //fr_iter = e;
     return fr; 
 }

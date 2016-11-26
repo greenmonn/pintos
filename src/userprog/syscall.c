@@ -381,6 +381,20 @@ char *find_file_name(int fd) {
     return NULL;
 }
 
+void frame_pin(void *buffer, unsigned size) {
+    int i;
+    for (i = pg_round_down(buffer); i < buffer+size; i+=PGSIZE) {
+        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
+        pg->fr->pin = true;
+    }
+}
+void frame_unpin(void *buffer, unsigned size) {
+    int i;
+    for (i = pg_round_down(buffer); i < buffer+size ; i+=PGSIZE) {
+        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
+        pg->fr->pin = false;
+    }
+}
 
 
 int write(int fd, const void *buffer, unsigned size)
@@ -395,6 +409,7 @@ int write(int fd, const void *buffer, unsigned size)
         putbuf((const char*) buf, size);
         return size;
     }
+    frame_pin(buffer, size);
 	lock_acquire(&filesys_lock);
     //write to file
     struct file *file_to_write = find_file_desc(fd);
@@ -414,6 +429,7 @@ int write(int fd, const void *buffer, unsigned size)
 		return ret;
     }
 	lock_release(&filesys_lock);
+    frame_unpin(buffer, size);
     return 0;
 
 }
@@ -437,6 +453,7 @@ int read(int fd, void *buffer, unsigned size)
     }
 
     //read from file
+    frame_pin(buffer, size);
 	lock_acquire(&filesys_lock);
 	struct file *file_to_read = find_file_desc(fd);
     //printf("found file desc\n");
@@ -447,6 +464,7 @@ int read(int fd, void *buffer, unsigned size)
 		return ret;
     }
 	lock_release(&filesys_lock);
+    frame_unpin(buffer, size);
     return -1;
 }
 
