@@ -426,6 +426,7 @@ int write(int fd, const void *buffer, unsigned size)
         //lock_acquire(&filesys_lock);
         int ret = file_write(file_to_write, (const void*)buffer, size);
         lock_release(&filesys_lock);
+		frame_unpin(buffer, size);
 		return ret;
     }
 	lock_release(&filesys_lock);
@@ -460,6 +461,7 @@ int read(int fd, void *buffer, unsigned size)
     if(file_to_read) {
     	//lock_acquire(&filesys_lock);
         int ret =  file_read(file_to_read, (void *)buffer, (int)size);
+		frame_unpin(buffer, size);
         lock_release(&filesys_lock);
 		return ret;
     }
