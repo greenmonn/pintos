@@ -590,15 +590,17 @@ void munmap (int mapid) {
 
 			file_write_at(me->file, addr, mmap_pg->page_read_bytes, ofs);
 			
-			hash_delete(thread_current()->suppl_pages, &mmap_pg->elem);
-			
-			frame_free(mmap_pg->fr);
-            free(mmap_pg);
-			pagedir_clear_page(thread_current()->pagedir,addr);
-		}
-				
-		if (read_bytes <= PGSIZE)
-			break;
+
+
+            frame_free(mmap_pg->fr);
+
+            pagedir_clear_page(thread_current()->pagedir,addr);
+        }
+
+        hash_delete(thread_current()->suppl_pages, &mmap_pg->elem);
+        free(mmap_pg);
+        if (read_bytes <= PGSIZE)
+            break;
 
 
 		read_bytes -= PGSIZE;

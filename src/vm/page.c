@@ -218,7 +218,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 //filesys_lock_acquire();
                 //file_seek(pg->file, pg->ofs);
                 if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
-                    frame_free(pg->fr);
+                    frame_free(newfr);
                     //filesys_lock_release();
                     printf("file_read fail\n");
                     return 0;
