@@ -16,8 +16,8 @@ make_frame(void *addr, struct thread *owner)
     struct frame *fr = malloc(sizeof(struct frame));
     if (fr != NULL) {
         fr->addr = addr;
-        fr->pte = NULL;
-        fr->upage = NULL;
+        //fr->pte = NULL;
+        //fr->upage = NULL;
         fr->owner = owner;
         fr->pin = true;
     }
@@ -36,9 +36,9 @@ frame_table_init(void)
 {
     list_init(&frame_table);
     lock_init(&frame_lock);
-    lock_init(&frame_table_lock);
-    eviction_cnt = 0;
-    fr_iter = list_begin(&frame_table);
+    //lock_init(&frame_table_lock);
+    //eviction_cnt = 0;
+    //fr_iter = list_begin(&frame_table);
 }
 
 struct frame *
@@ -88,19 +88,19 @@ frame_alloc(bool zero)
 		} else {
 			size_t swap_index = swap_out(evicted_addr);
 			//printf("2\n");
-			if(evicted_page != NULL) {
+		//	if(evicted_page != NULL) {
 
 				evicted_page->location = SWAP;
 				evicted_page->swap_index = swap_index;
 				evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
-			} 
-			else {
-				//printf("NO SUPP PAGE : Make new one!\n");
+		//	} 
+		/*	else {
+				printf("NO SUPP PAGE : Make new one!\n");
 				struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
 				new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
 				new_swap_page->swap_index = swap_index;
 				page_insert(thread_current()->suppl_pages, new_swap_page);
-			}
+			}*/
 		}
 
 		//lock_acquire(&frame_table_lock);
@@ -112,7 +112,7 @@ frame_alloc(bool zero)
 		palloc_free_page(evicted_addr);
 		//REtry palloc!
 		kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
-		ASSERT(evicted_addr == kaddr);
+		//ASSERT(evicted_addr == kaddr);
 	}
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
     //lock_acquire(&frame_table_lock);
@@ -124,17 +124,19 @@ frame_alloc(bool zero)
 }
 
 void 
-frame_free(void *kaddr) //delete frame from list + free the frame!
+frame_free(struct frame *fr_to_free) //delete frame from list + free the frame!
 {
 	lock_acquire(&frame_lock);
     //palloc_free_page(kaddr);
 
-    struct frame *fr_to_free = frame_find(kaddr);
+    //struct frame *fr_to_free = frame_find(kaddr);
     //lock_acquire(&frame_table_lock);
     list_remove(&fr_to_free->elem);
     //lock_release(&frame_table_lock);
+
+    palloc_free_page(ptov(fr_to_free->addr));
+
     free(fr_to_free);
-    palloc_free_page(kaddr);
 	lock_release(&frame_lock);
 }
 
@@ -148,98 +150,36 @@ frame_evict()
 
    // lock_acquire(&frame_table_lock);
 
-    struct list_elem *e = fr_iter;
-	int i = 0;
-	/*for (e = fr_iter; e != fr_iter; e = list_next(e)) {
-		if (e == list_end(&frame_table)) {
-			e = list_begin(&frame_table);
-		}
-		fr = list_entry(e, struct frame,elem);
-		if (fr->pin) continue;
-		if ((*(fr->pte) & PTE_D) != 0 && (*(fr->pte) & PTE_A) ==0) {
-			fr->pin = true;
-			e = list_next(e);
-			fr_iter = e;
-			return fr;
-		}
-		*(fr->pte) &= ~PTE_A;
-	}*/
+    struct list_elem *e = list_begin(&frame_table);
+	//int i = 0;
+    while (true) {
+        
 
-	while (true) {
-		//printf("%d\n", i++);
+        fr = list_entry(e, struct frame, elem);
+
+        if (fr->pin) {
+            e = list_next(e);
+        } else {
+            //if (i>1) {
+             // fr->pin = true;
+             // return fr;
+             // }
+            if ((*(fr->pte) & PTE_A) == 0) {
+                fr->pin = true;
+                break;
+            }  
+            *(fr->pte) &= ~PTE_A;       
+            e = list_next(e);
+        }
         if (e == list_end(&frame_table)) {
             e = list_begin(&frame_table);
-			//i++;
+          //  i++;
         }
 
-		fr = list_entry(e, struct frame, elem);
-		
-		if (fr->pin) {
-			e = list_next(e);
-		} else {
-			/*if (i>1) {
-				fr->pin = true;
-				e = list_next(e);
-				fr_iter = e;
-				return fr;
-			}*/
-			if (/*(*(fr->pte) & PTE_D) != 0 &&*/ (*(fr->pte) & PTE_A) == 0) {
-				fr->pin = true;
-				e = list_next(e);
-				//fr_iter = e;
-				break;
-			}  
-			if ((*(fr->pte) & PTE_A) != 0) {
-				*(fr->pte) &= ~PTE_A;
-			}
-			e = list_next(e);
-		}
-		
-    }/*
-	for (e = fr_iter; e != fr_iter; e = list_next(e)) {
-		if (e == list_end(&frame_table)) {
-			e = list_begin(&frame_table);
-		}
+    }
 
-		fr = list_entry(e, struct frame,elem);
-		if (fr->pin) continue;
-		if ((*(fr->pte) & PTE_A) == 0) {
-			fr->pin = true;
-			e = list_next(e);
-			fr_iter = e;
-			return fr;
-		}
-	}
-	return fr;*/
-	
-	/*while (true) {
-		//printf("%d\n", i++);
-        if (e == list_end(&frame_table)) {
-            e = list_begin(&frame_table);
-			//i++;
-        }
-
-		fr = list_entry(e, struct frame, elem);
-		
-		if (fr->pin) {
-			e = list_next(e);
-		} else {
-			
-			if ((*(fr->pte) & PTE_D) != 0 && (*(fr->pte) & PTE_A) == 0) {
-				fr->pin = true;
-				e = list_next(e);
-				break;
-			}  
-			if ((*(fr->pte) & PTE_A) != 0) {
-				*(fr->pte) &= ~PTE_A;
-			}
-			e = list_next(e);
-		}
-		
-    }*/
-   fr_iter = e;
-   // lock_release(&frame_table_lock);
-	return fr; 
+    //fr_iter = e;
+    return fr; 
 }
 
 //Keep track of user pages.. later we'll use frame table to set a policy to evict frames and install new frame though pool is full!

@@ -19,11 +19,9 @@ struct page *
 make_page(void *uaddr, enum page_location place)
 {
     struct page *pg = malloc(sizeof (struct page)); //ASSERT: kernel pool?
-    if (pg != NULL) {
         pg->uaddr = uaddr;
         pg->location = place;
         //pg->is_code_seg = false;
-    }
     return pg;
 }
 
@@ -63,7 +61,7 @@ static void page_free_func (struct hash_elem *e, void *aux UNUSED)
     struct page *pg = hash_entry(e, struct page, elem);
     if (pg->location == FRAME)
     {
-        frame_free(pagedir_get_page(thread_current()->pagedir, pg->uaddr));
+        frame_free(pg->fr);
         pagedir_clear_page(thread_current()->pagedir, pg->uaddr);
     } else if (pg->location == SWAP) {
 		swap_free(pg->swap_index);
@@ -126,15 +124,12 @@ install_page (struct page *pg, struct frame *fr, bool writable)
     //struct frame *fr = frame_find(kpage);
     void *kpage = ptov(fr->addr);
     //ASSERT(fr != NULL);
-    if (fr != NULL) { 
         fr->upage = pg->uaddr;
         //fr->pin = false; WE'll do it in pagedir_set_page
-    }
     //ASSERT(fr != NULL);
     //2. Save writable value to the page
-    if (pg != NULL) {
         pg->writable = writable;
-    }
+        pg->fr = fr;
 
 
     return (pagedir_get_page (t->pagedir, pg->uaddr) == NULL
@@ -155,14 +150,11 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
         switch(pg->location) {
             case ZERO:
                 newfr = frame_alloc(true);
-                if (newfr == NULL) {
-                    return 0;
-                }
                 kpage = ptov(newfr->addr);
                 //memset (kpage, 0, PGSIZE);
                 install_page (pg, newfr, pg->writable);
 				pg->location = FRAME;
-                //pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_accessed(t->pagedir, upage, true);
                 //pagedir_set_dirty(t->pagedir, upage, false);
                 //newfr = frame_find(kpage);
                 newfr->pin = false;
@@ -170,16 +162,15 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 break; //Never reached
             case SWAP:
                 newfr = frame_alloc(false);
-                if (newfr == NULL) return 0;
                 kpage = ptov(newfr->addr);
                 swap_in(pg->swap_index, kpage);
                 //printf("1\n");
                 pg->location = FRAME;
-                pg->swap_index = -1;
+                //pg->swap_index = -1;
                 install_page(pg, newfr, pg->writable);
                
                 //pagedir_set_dirty(t->pagedir, upage, true);
-                //pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_accessed(t->pagedir, upage, true);
                 //newfr = frame_find(kpage);
                 newfr->pin = false;
                 return 1;
@@ -191,18 +182,10 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
 
                 newfr = frame_alloc(false);
                 kpage = ptov(newfr->addr);
-                if (kpage == NULL) {
-                    printf("frame_alloc fail : should PANIC\n");
-                    return 0;
-                }
                 page_read_bytes = pg->page_read_bytes;
                 page_zero_bytes = PGSIZE - page_read_bytes;
-
-
-                //filesys_lock_acquire();
-                //file_seek(pg->file, pg->ofs);
                 if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
-                    frame_free(kpage);
+                    frame_free(pg->fr);
                     //filesys_lock_release();
                     printf("file_read fail\n");
                     return 0;
@@ -235,7 +218,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 //filesys_lock_acquire();
                 //file_seek(pg->file, pg->ofs);
                 if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
-                    frame_free(kpage);
+                    frame_free(pg->fr);
                     //filesys_lock_release();
                     printf("file_read fail\n");
                     return 0;
@@ -248,7 +231,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                       
 				pg->location = MMAP;
 
-                //pagedir_set_accessed(t->pagedir, upage, true);
+                pagedir_set_accessed(t->pagedir, upage, true);
                 //pagedir_set_dirty(t->pagedir, upage, false);
                 newfr->pin = false;
                 return 1;
@@ -281,7 +264,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
             }*/
             page_insert(pages, stk_pg);
            	install_page(stk_pg, newfr, true);
-			//pagedir_set_accessed(thread_current()->pagedir, upage, true);
+			pagedir_set_accessed(thread_current()->pagedir, upage, true);
             //pagedir_set_dirty(t->pagedir, upage, false);
 
 			return 1;

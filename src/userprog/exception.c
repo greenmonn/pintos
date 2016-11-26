@@ -18,12 +18,6 @@ static long long page_fault_cnt;
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
 
-int non_IO_cnt;
-int IO_cnt;
-int executing_process;
-struct semaphore IO_mutex;
-struct semaphore nonIO_mutex;
-struct semaphore IO_sema;
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -47,7 +41,7 @@ exception_init (void)
        e.g. via the INT, INT3, INTO, and BOUND instructions.  Thus,
        we set DPL==3, meaning that user programs are allowed to
        invoke them via these instructions. */
-    sema_init(&IO_sema, 0);
+    //sema_init(&IO_sema, 0);
     intr_register_int (3, 3, INTR_ON, kill, "#BP Breakpoint Exception");
     intr_register_int (4, 3, INTR_ON, kill, "#OF Overflow Exception");
     intr_register_int (5, 3, INTR_ON, kill,
@@ -74,26 +68,9 @@ exception_init (void)
      fault address is stored in CR2 and needs to be preserved. */
   intr_register_int (14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
 
-  non_IO_cnt = 0;
-  IO_cnt = 0;
-  executing_process = 0;
-  sema_init(&IO_sema, 0);
-  sema_init(&IO_mutex, 1);
-  sema_init(&nonIO_mutex, 1);
 
 }
 
-void
-exec_up(void)
-{
-    executing_process++;
-}
-
-void 
-exec_down(void)
-{
-    executing_process--;
-}
 
 /* Prints exception statistics. */
 void
@@ -293,6 +270,7 @@ page_fault (struct intr_frame *f)
       kill (f);
 
   }
+  
 
 }
 

@@ -75,10 +75,6 @@ userptr_valid_no_code(char* ptr) {
 	
 	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
 
-	/*if (pg != NULL && pg->location == 0 && pg->writable) {
-		return true;
-	}*/
-
 	flag = install_suppl_page(thread_current()->suppl_pages, pg, ptr);
 
     return flag;
@@ -87,9 +83,12 @@ userptr_valid_no_code(char* ptr) {
 
 bool
 userbuf_valid(char* ptr, int bufsize) {
+    if (ptr >= PHYS_BASE)
+        exit(-1);
+    void* pg = pg_round_down(ptr);
     int i;
-    for(i=0; i<bufsize; i++) {
-        if (!userptr_valid(ptr+i)) {
+    for(i=pg; i<ptr+bufsize; i+=PGSIZE) {
+        if (!userptr_valid(i)) {
             return false;
 
         }
@@ -99,9 +98,12 @@ userbuf_valid(char* ptr, int bufsize) {
 
 bool
 userbuf_valid_no_code(char* ptr, int bufsize) {
+    if (ptr >= PHYS_BASE)
+        exit(-1);
+    void* pg = pg_round_down(ptr);
     int i;
-    for(i=0; i<bufsize; i++) {
-        if (!userptr_valid_no_code(ptr+i)) {
+    for(i=pg; i<ptr+bufsize; i+=PGSIZE) {
+        if (!userptr_valid_no_code(i)) {
             return false;
         }
     }
@@ -589,10 +591,9 @@ void munmap (int mapid) {
 			file_write_at(me->file, addr, mmap_pg->page_read_bytes, ofs);
 			
 			hash_delete(thread_current()->suppl_pages, &mmap_pg->elem);
-			free(mmap_pg);
-
-
-			frame_free(pagedir_get_page(thread_current()->pagedir, addr));
+			
+			frame_free(mmap_pg->fr);
+            free(mmap_pg);
 			pagedir_clear_page(thread_current()->pagedir,addr);
 		}
 				

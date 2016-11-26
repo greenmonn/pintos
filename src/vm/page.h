@@ -19,6 +19,7 @@ enum page_location
 struct page
 {
     struct hash_elem elem;
+    struct frame *fr;
     void *uaddr; //hash key
     enum page_location location;
     struct file *file;
