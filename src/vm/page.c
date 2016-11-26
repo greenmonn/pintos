@@ -184,13 +184,14 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 kpage = ptov(newfr->addr);
                 page_read_bytes = pg->page_read_bytes;
                 page_zero_bytes = PGSIZE - page_read_bytes;
+                filesys_lock_acquire();
                 if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
-                    frame_free(pg->fr);
-                    //filesys_lock_release();
+                    frame_free(newfr);
+                    filesys_lock_release();
                     printf("file_read fail\n");
                     return 0;
                 }
-                //filesys_lock_release();
+                filesys_lock_release();
                 memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
 
@@ -215,15 +216,15 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 page_zero_bytes = PGSIZE - page_read_bytes;
 
 
-                //filesys_lock_acquire();
+                filesys_lock_acquire();
                 //file_seek(pg->file, pg->ofs);
                 if (file_read_at(pg->file, kpage, page_read_bytes,pg->ofs) != (int) page_read_bytes) {
                     frame_free(newfr);
-                    //filesys_lock_release();
+                    filesys_lock_release();
                     printf("file_read fail\n");
                     return 0;
                 }
-                //filesys_lock_release();
+                filesys_lock_release();
                 memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
 
