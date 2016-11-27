@@ -44,7 +44,6 @@ userptr_valid(char* ptr) {
 		return true;
 	}
 
-
 	struct page *pg = page_lookup(thread_current()->suppl_pages, pg_round_down(ptr));
 
 	/*if (pg != NULL && pg->location == 0) {
@@ -86,7 +85,7 @@ userbuf_valid(char* ptr, int bufsize) {
     if (ptr >= PHYS_BASE)
         exit(-1);
     void* pg = pg_round_down(ptr);
-    int i;
+    int32_t i;
     for(i=pg; i<ptr+bufsize; i+=PGSIZE) {
         if (!userptr_valid(i)) {
             return false;
@@ -101,7 +100,7 @@ userbuf_valid_no_code(char* ptr, int bufsize) {
     if (ptr >= PHYS_BASE)
         exit(-1);
     void* pg = pg_round_down(ptr);
-    int i;
+    int32_t i;
     for(i=pg; i<ptr+bufsize; i+=PGSIZE) {
         if (!userptr_valid_no_code(i)) {
             return false;
@@ -124,6 +123,35 @@ void get_arg(struct intr_frame *f, char** arg, int n) {
     }
 }
 
+void frame_pin(void *buffer, unsigned size) {
+    int32_t i;
+    for (i = pg_round_down(buffer); i < buffer+size; i+=PGSIZE) {
+        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
+        pg->fr->pin = true;
+    }
+}
+void frame_unpin(void *buffer, unsigned size) {
+    int32_t i;
+    for (i = pg_round_down(buffer); i < buffer+size ; i+=PGSIZE) {
+        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
+        pg->fr->pin = false;
+    }
+}
+
+void ptr_pin(void* vaddr) {
+	struct page *pg = page_lookup(thread_current()->suppl_pages, vaddr);
+	
+	if (pg) pg->fr->pin = true;
+}
+
+void ptr_unpin(void* vaddr) {
+	struct page *pg = page_lookup(thread_current()->suppl_pages, vaddr);
+
+	if (pg) pg->fr->pin = false;
+}
+
+
+
   
 static void
 syscall_handler (struct intr_frame *f) 
@@ -137,7 +165,9 @@ syscall_handler (struct intr_frame *f)
   if (!userptr_valid(f->esp)) {
       exit(-1);
   }
-  //printf("wow\n");
+
+  ptr_pin(pg_round_down((void*)f->esp));
+
   switch (*(int*)(f->esp)) 
   {
     case SYS_HALT: 
@@ -239,6 +269,7 @@ syscall_handler (struct intr_frame *f)
 		break;
 	}
   }
+  ptr_unpin(pg_round_down((void*)f->esp));
 }
 
 /* CREATE : limitations 
@@ -255,18 +286,22 @@ int create(const char *name, unsigned size) {
     if (strlen(name) > 14) {
         return 0;
     }
-    lock_acquire(&filesys_lock);
+    frame_pin((void*)name, strlen(name)+1);
+	lock_acquire(&filesys_lock);
     int ret = filesys_create(name, size);
     lock_release(&filesys_lock);
+	frame_unpin((void*)name, strlen(name)+1);
     return ret;
 }
 
 int remove(const char *file) {
     if (!userptr_valid(file))
         exit(-1);
-    lock_acquire(&filesys_lock);
+    frame_pin((void*)file, strlen(file)+1);
+	lock_acquire(&filesys_lock);
     int ret = filesys_remove(file);
     lock_release(&filesys_lock);
+	frame_unpin((void*)file, strlen(file)+1);
     return ret;
 }
 
@@ -277,10 +312,12 @@ int open(const char *name) {
         exit(-1);
     }
    int fd;
+   frame_pin((void*)name, strlen(name)+1);
    lock_acquire(&filesys_lock);
    struct file* openfile = filesys_open((const char*)name);
    lock_release(&filesys_lock);
    if (!openfile) {
+	   frame_unpin((void*)name, strlen(name)+1);
        return -1;
    }
 
@@ -291,6 +328,7 @@ int open(const char *name) {
        lock_acquire(&filesys_lock);
        file_close(openfile);
        lock_release(&filesys_lock);
+	   frame_unpin((void*)name, strlen(name)+1);
        return -1;
    }
    
@@ -298,7 +336,7 @@ int open(const char *name) {
    fd = fe->fd = thread_current()->fd_num++;
    strlcpy(fe->filename, name, strlen(name)+1);
    list_push_back(file_list, &fe->elem);
-
+   frame_unpin((void*)name, strlen(name)+1);
    return fd;
 }
 
@@ -358,7 +396,9 @@ void exit(int status) {
 int exec(const char *cmd_line) {
     if (!userbuf_valid(cmd_line, strlen(cmd_line)+1)) 
         exit(-1);
+	frame_pin((void*)cmd_line, strlen(cmd_line)+1);
 	int pid = process_execute(cmd_line);
+	frame_unpin((void*)cmd_line, strlen(cmd_line)+1);
 	return pid;
 }
 
@@ -381,35 +421,21 @@ char *find_file_name(int fd) {
     return NULL;
 }
 
-void frame_pin(void *buffer, unsigned size) {
-    int i;
-    for (i = pg_round_down(buffer); i < buffer+size; i+=PGSIZE) {
-        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
-        pg->fr->pin = true;
-    }
-}
-void frame_unpin(void *buffer, unsigned size) {
-    int i;
-    for (i = pg_round_down(buffer); i < buffer+size ; i+=PGSIZE) {
-        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
-        pg->fr->pin = false;
-    }
-}
-
-
 int write(int fd, const void *buffer, unsigned size)
 {
     if (!userbuf_valid(buffer, size)) {
         exit(-1);
     }
+	frame_pin(buffer, size);
 
     //printf("user buffer check finish\n");
     const char *buf = (const char*)buffer;
     if (fd == STDOUT_FILENO) {
         putbuf((const char*) buf, size);
+		frame_unpin(buffer,size);
         return size;
     }
-    frame_pin(buffer, size);
+    
 	lock_acquire(&filesys_lock);
     //write to file
     struct file *file_to_write = find_file_desc(fd);
@@ -443,18 +469,19 @@ int read(int fd, void *buffer, unsigned size)
     //TODO : deny buffer pointing code segment..
     //printf("user buffer check finish\n");
     //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
-
+	frame_pin(buffer, size);
     char *buf = (char *)buffer;
     if (fd == STDIN_FILENO) {
         int index = 0;
         for (index = 0 ; index < size ; index++) {
             buf[index] = input_getc();
         }
+		frame_unpin(buffer, size);
         return index;
     }
 
     //read from file
-    frame_pin(buffer, size);
+    
 	lock_acquire(&filesys_lock);
 	struct file *file_to_read = find_file_desc(fd);
     //printf("found file desc\n");
@@ -537,11 +564,10 @@ int mmap (int fd, void *addr) {
 	lock_release(&filesys_lock);
 
 	int32_t ofs = 0;
-	int32_t size = read_bytes;
 	thread_current()->mapid++;
     uint32_t first_addr = addr;
 
-
+	int pg_count = 0;
 	while (read_bytes > 0)
 	{
 		uint32_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
@@ -553,6 +579,7 @@ int mmap (int fd, void *addr) {
                 addr -=PGSIZE;
                 struct page *pg = page_lookup(thread_current()->suppl_pages, addr);
                 hash_delete(thread_current()->suppl_pages, &pg->elem);
+				free(pg);
             }
 			//printf("1\n");
 			return -1;
@@ -566,11 +593,12 @@ int mmap (int fd, void *addr) {
 		read_bytes -= page_read_bytes;
 		ofs += page_read_bytes;
 		addr += PGSIZE;
+		pg_count++;
 	}
 	struct mmap_elem *m = malloc(sizeof(struct mmap_elem));
 	m->file = file_to_mmap;
 	m->addr = first_addr;
-	m->read_bytes = size;
+	m->pg_count = pg_count;
 	m->mapid = thread_current()->mapid;
 	list_push_back(&thread_current()->mmap_list, &m->elem);
 
@@ -597,33 +625,30 @@ void munmap (int mapid) {
 
 	struct page *mmap_pg;
 
-	uint32_t read_bytes = me->read_bytes;
+	
 	uint32_t ofs = 0;
 
-			lock_acquire(&filesys_lock);
-	while (read_bytes > 0)
+	lock_acquire(&filesys_lock);
+	int i;
+	for (i = 0; i<me->pg_count; i++)
 	{
 
 		mmap_pg = page_lookup(thread_current()->suppl_pages,addr);
 		
 		if (pagedir_is_dirty(thread_current()->pagedir,addr)) {
+			
+			mmap_pg->fr->pin = true;
 
 			file_write_at(me->file, addr, mmap_pg->page_read_bytes, ofs);
 			
-
 
             frame_free(mmap_pg->fr);
 
             pagedir_clear_page(thread_current()->pagedir,addr);
         }
-
         hash_delete(thread_current()->suppl_pages, &mmap_pg->elem);
         free(mmap_pg);
-        if (read_bytes <= PGSIZE)
-            break;
-
-
-		read_bytes -= PGSIZE;
+        
 		ofs += PGSIZE;
 		addr += PGSIZE;
 	}

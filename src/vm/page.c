@@ -247,7 +247,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
     } 
     else {
         void *esp = thread_current()->esp;
-    
+    	//printf("stack_grow\n");
       
         if ((size_t)esp - 32 > ((size_t)fault_addr) || ((size_t)PHYS_BASE) - ((size_t)((void *)fault_addr)) > STACK_SIZE) {
             //printf("pg is null\n");

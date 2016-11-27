@@ -14,7 +14,7 @@ struct file_elem {
 struct mmap_elem {
 	struct file *file;
 	void* addr;
-	uint32_t read_bytes;
+	int pg_count;
 	int mapid;
 	struct list_elem elem;
 };

@@ -69,6 +69,7 @@ frame_alloc(bool zero)
 	void *kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
 	if (!kaddr) {   //Evict a frame and make it as MINE!
 		//printf("frame_alloc() : palloc failed\n");
+		lock_acquire(&frame_table_lock);
 		struct frame *evicted_fr = frame_evict();
         ASSERT(evicted_fr != NULL);
 		void *evicted_addr = ptov(evicted_fr->addr);
@@ -87,6 +88,7 @@ frame_alloc(bool zero)
 			file_write_at(evicted_page->file,evicted_addr,evicted_page->page_read_bytes,evicted_page->ofs);
 			filesys_lock_release();
 		} else {
+			
 			size_t swap_index = swap_out(evicted_addr);
 			//printf("2\n");
 			if(evicted_page != NULL) {
@@ -103,10 +105,10 @@ frame_alloc(bool zero)
 				page_insert(thread_current()->suppl_pages, new_swap_page);
 			}
 		}
-
-		lock_acquire(&frame_table_lock);
+		
+		//lock_acquire(&frame_table_lock);
 		list_remove(&evicted_fr->elem);
-		lock_release(&frame_table_lock);
+		//lock_release(&frame_table_lock);
 
 		free(evicted_fr);
 
@@ -114,6 +116,7 @@ frame_alloc(bool zero)
 		//REtry palloc!
 		kaddr = palloc_get_page(PAL_USER | (zero ? PAL_ZERO : 0));
 		//ASSERT(evicted_addr == kaddr);
+		lock_release(&frame_table_lock);
 	}
     struct frame *new_fr = make_frame(vtop(kaddr), thread_current());
     lock_acquire(&frame_table_lock);
@@ -147,10 +150,9 @@ frame_evict()
 	//printf("frame_evict()\n");
 
 	//void * kaddr;
-    struct frame *fr;
-
-   lock_acquire(&frame_table_lock);
-
+    
+   //lock_acquire(&frame_table_lock);
+	struct frame *fr;
     struct list_elem *e = list_begin(&frame_table);
 	//int i = 0;
     while (true) {
@@ -175,7 +177,7 @@ frame_evict()
 
     }
 
-    lock_release(&frame_table_lock);
+    //lock_release(&frame_table_lock);
     //fr_iter = e;
     return fr; 
 }

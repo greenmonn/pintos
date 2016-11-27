@@ -717,7 +717,7 @@ static bool setup_stack (void **esp, char *f_name)
   uint8_t *kpage;
   bool success = false;
   struct frame *newfr = frame_alloc(true);
-  newfr->pin = false;
+  
   kpage = ptov(newfr->addr);
   /*if (kpage != NULL) 
     {*/
@@ -731,11 +731,11 @@ static bool setup_stack (void **esp, char *f_name)
       success = install_page (stk_pg, newfr, true);
 	  //pagedir_set_accessed(thread_current()->pagedir, stk_pg->uaddr, true);
 	  //pagedir_set_dirty(thread_current()->pagedir,stk_pg->uaddr,false);
-
+	  
       if (success) {
         *esp = PHYS_BASE;
         //struct frame *fr = frame_find(kpage);
-        //newfr->pin = false;
+        newfr->pin = false;
       }
       else
         frame_free(kpage);
