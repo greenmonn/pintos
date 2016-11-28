@@ -596,7 +596,6 @@ int mmap (int fd, void *addr) {
 		pg_count++;
 	}
 	struct mmap_elem *m = malloc(sizeof(struct mmap_elem));
-	m->file = file_to_mmap;
 	m->addr = first_addr;
 	m->pg_count = pg_count;
 	m->mapid = thread_current()->mapid;
@@ -622,6 +621,7 @@ void munmap (int mapid) {
 		return;
 	}
 	void* addr = me->addr;
+    struct file* unmap_file;
 
 	struct page *mmap_pg;
 
@@ -631,29 +631,34 @@ void munmap (int mapid) {
 	lock_acquire(&filesys_lock);
 	int i;
 	for (i = 0; i<me->pg_count; i++)
-	{
+    {
 
-		mmap_pg = page_lookup(thread_current()->suppl_pages,addr);
-		
-		if (pagedir_is_dirty(thread_current()->pagedir,addr)) {
-			
-			mmap_pg->fr->pin = true;
+        mmap_pg = page_lookup(thread_current()->suppl_pages,addr);
 
-			file_write_at(me->file, addr, mmap_pg->page_read_bytes, ofs);
-			
 
+        if (pagedir_is_dirty(thread_current()->pagedir,addr)) {
+
+            mmap_pg->fr->pin = true;
+
+            file_write_at(mmap_pg->file, addr, mmap_pg->page_read_bytes, ofs);
+
+        }
+
+        if (pagedir_get_page(thread_current()->pagedir,addr)) {
             frame_free(mmap_pg->fr);
 
             pagedir_clear_page(thread_current()->pagedir,addr);
         }
+
         hash_delete(thread_current()->suppl_pages, &mmap_pg->elem);
+        unmap_file = mmap_pg->file;
         free(mmap_pg);
-        
-		ofs += PGSIZE;
-		addr += PGSIZE;
-	}
-	file_close(me->file);
-	lock_release(&filesys_lock);
+
+        ofs += PGSIZE;
+        addr += PGSIZE;
+    }
+    file_close(unmap_file);
+    lock_release(&filesys_lock);
 	free(me);
 
 }

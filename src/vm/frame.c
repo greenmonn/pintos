@@ -89,21 +89,28 @@ frame_alloc(bool zero)
 			filesys_lock_release();
 		} else {
 			
-			size_t swap_index = swap_out(evicted_addr);
+
+
 			//printf("2\n");
 			if(evicted_page != NULL) {
 
 				evicted_page->location = SWAP;
+
+			size_t swap_index = swap_out(evicted_addr);
 				evicted_page->swap_index = swap_index;
 				evicted_page->writable =(*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
 			} 
 			else {
+
+			size_t swap_index = swap_out(evicted_addr);
 				//printf("NO SUPP PAGE : Make new one!\n");
 				struct page *new_swap_page = make_page(evicted_fr->upage, SWAP);
 				new_swap_page->writable = (*(evicted_fr->pte) & PTE_W) == 0 ? false : true;
 				new_swap_page->swap_index = swap_index;
 				page_insert(thread_current()->suppl_pages, new_swap_page);
 			}
+
+
 		}
 		
 		//lock_acquire(&frame_table_lock);

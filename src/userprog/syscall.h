@@ -12,7 +12,6 @@ struct file_elem {
 };
 
 struct mmap_elem {
-	struct file *file;
 	void* addr;
 	int pg_count;
 	int mapid;
