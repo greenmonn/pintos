@@ -45,24 +45,20 @@ struct cache_entry * cache_lookup(disk_sector_t sector_no)
 //[TODO 2-1] cache_evict : if cache is full - evict one by clock algorithm
 
 //[TODO 2-2] cache_insert : Insert a new cache entry(if Cache miss) handle evict inside
-//[TODO 3] implement read-ahead policy (Later)
+//[TODO 3] implement read-ahead policy
 void cache_insert(struct cache_entry *new_entry)
 {
     ASSERT(cache_lookup(new_entry->sector_no) == NULL);
 
     int currsize = hash_size(&buffer_cache);
     if (currsize < 64) {
-        lock_acquire(&cache_lock);
         //printf("insert entry : %d\n", new_entry->sector_no);
         hash_insert(&buffer_cache, &new_entry->elem);
-        lock_release(&cache_lock);
         return;
     }
-    lock_acquire(&cache_lock);
     //printf("cache entry should be evicted!\n");
     cache_evict();
     hash_insert(&buffer_cache, &new_entry->elem);
-    lock_release(&cache_lock);
 }
 
 void cache_evict() {    //LIMITATION : cannot save iterator
@@ -94,11 +90,14 @@ void cache_evict() {    //LIMITATION : cannot save iterator
 }
 int read_in_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int readsize)
 {
+    //printf("File Read : %d\n", sector_idx);
+    lock_acquire(&cache_lock);
     struct cache_entry *ce = cache_lookup(sector_idx);
     if (ce != NULL) {
         /* Cache hit */
          memcpy(buffer, ce->data + sector_ofs, readsize);
          ce->used = true;
+         lock_release(&cache_lock);
          return readsize;
     }
 
@@ -111,34 +110,51 @@ int read_in_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int re
     new_entry->data = malloc(DISK_SECTOR_SIZE); //Kernel pool?
     cache_insert(new_entry);
 
+
     // 2. read data from disk
+    disk_sector_t *aux = malloc(sizeof(disk_sector_t));
+    *aux = sector_idx + 1;
+    
+    //printf("thread_create for read-ahead\n");
+    //thread_create("read-ahead", PRI_DEFAULT, read_ahead_thread, (void*)aux);
     disk_read(filesys_disk, sector_idx, new_entry->data);
     // 3. copy to buffer by readsize
     memcpy(buffer, new_entry->data + sector_ofs, readsize);
+
+    lock_release(&cache_lock);
     return readsize;  
 
 }
 
 static void
-read_ahead_thread (void *sector_no)
+read_ahead_thread (void *aux)
 {
-    struct cache_entry *ce = cache_lookup((disk_sector_t)sector_no);
-    if (ce != NULL)
+    disk_sector_t sector_no = *(disk_sector_t *)aux;
+    //printf("read_ahead thread : %d\n", sector_no);
+    struct cache_entry *ce = cache_lookup(sector_no);
+    if (ce != NULL) {
+        free(aux);
         return;
+    }
     struct cache_entry *new_entry = malloc(sizeof (struct cache_entry));
-    new_entry->sector_no = sector_idx;
+    new_entry->sector_no = sector_no;
     new_entry->used = true;
     new_entry->dirty = false;
     new_entry->data = malloc(DISK_SECTOR_SIZE);
     cache_insert(new_entry);
 
-    disk_read(filesys_disk, sector_idx, new_entry->data);
+
+    disk_read(filesys_disk, sector_no, new_entry->data);
+
+    free(aux);
 }
 
 //[TODO 4] write_to_cache : Cache hit - modify data / Cache miss - insert new entry to cache
 
 int write_to_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int length, bool partial)
 {
+    //printf("File write : %d\n", sector_idx);
+    lock_acquire(&cache_lock);
     struct cache_entry *ce = cache_lookup(sector_idx);
     if (ce != NULL) {
         /* Cache hit */
@@ -146,6 +162,7 @@ int write_to_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int l
         memcpy(ce->data + sector_ofs, buffer, length);
         ce->used = true;
         ce->dirty = true;
+        lock_release(&cache_lock);
         return length;
     }
 
@@ -158,6 +175,9 @@ int write_to_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int l
     new_entry->data = malloc(DISK_SECTOR_SIZE);
     cache_insert(new_entry);
 
+
+
+
     //2. Write to cache
     if (partial)
         disk_read(filesys_disk, sector_idx, new_entry->data);
@@ -165,6 +185,8 @@ int write_to_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int l
         memset(new_entry->data, 0, DISK_SECTOR_SIZE);
         
     memcpy(new_entry->data + sector_ofs, buffer, length);
+
+    lock_release(&cache_lock);
     return length;
 }
 

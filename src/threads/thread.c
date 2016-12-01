@@ -322,6 +322,7 @@ thread_tid (void)
 void
 thread_exit (void) 
 {
+    //printf("thread_exit : %s\n", thread_current()->name);
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
@@ -496,6 +497,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   //USERPROG
+  t->suppl_pages = NULL;
   t->proc_status = 0;
   t->parent = NULL;
   t->is_child_load = 0;

@@ -83,6 +83,7 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
+
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -123,6 +124,7 @@ process_execute (const char *file_name)
       process_wait(tid);	
       tid = -1;    
   } 
+  
   return tid;
 }
 /* A thread function that loads a user process and makes it start
@@ -181,16 +183,15 @@ start_process (void *f_name)
           thread_current()->parent->is_child_load = 2;
           if (child != NULL) {
               child->load = 2;
-              child->status = -1;
           }
 
           sema_up(&thread_current()->parent->sema);
         //sema_down(&thread_current()->parent->sema2);
       }
 
-      	  //printf("if not success:\n");
-      thread_exit ();
-      //exit(-1);
+      	 //printf("if not success:\n");
+      //thread_exit ();
+      exit(-1);
   }
 
   /* Start the user process by simulating a return from an
@@ -331,7 +332,9 @@ process_exit (void)
     thread_unblock(thread_current()->parent);*/
   
  
-  suppl_pages_destroy(curr->suppl_pages);
+  if (curr->suppl_pages)
+    suppl_pages_destroy(curr->suppl_pages);
+
   pd = curr->pagedir;
   if (pd != NULL) 
     {
