@@ -4,11 +4,13 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "filesys/filesys.h"
+#include "devices/timer.h"
 
 struct hash buffer_cache;
 struct lock cache_lock;
 
 static thread_func read_ahead_thread;
+static thread_func write_back_thread;
 
 unsigned cache_hash (const struct hash_elem *p_, void *aux UNUSED)
 {
@@ -28,6 +30,7 @@ void cache_init ()
 {
     hash_init(&buffer_cache, cache_hash, cache_less, NULL);
     lock_init(&cache_lock);
+    thread_create("write-back", PRI_DEFAULT, write_back_thread, NULL);
 }
 
 struct cache_entry * cache_lookup(disk_sector_t sector_no)
@@ -131,9 +134,11 @@ read_ahead_thread (void *aux)
 {
     disk_sector_t sector_no = *(disk_sector_t *)aux;
     //printf("read_ahead thread : %d\n", sector_no);
+    lock_acquire(&cache_lock);
     struct cache_entry *ce = cache_lookup(sector_no);
     if (ce != NULL) {
         free(aux);
+        lock_release(&cache_lock);
         return;
     }
     struct cache_entry *new_entry = malloc(sizeof (struct cache_entry));
@@ -145,10 +150,32 @@ read_ahead_thread (void *aux)
 
 
     disk_read(filesys_disk, sector_no, new_entry->data);
+    lock_release(&cache_lock);
 
     free(aux);
 }
 
+static void
+write_back_thread (void *aux UNUSED)
+{
+    while (true)
+    {
+        timer_sleep(5*TIMER_FREQ);
+        //printf("Write back time!\n");
+        lock_acquire(&cache_lock);
+        struct hash_iterator i;
+        hash_first (&i, &buffer_cache);
+        while (hash_next(&i))
+        {
+           struct cache_entry *ce = hash_entry (hash_cur (&i), struct cache_entry, elem);
+           if (ce->dirty == true) {
+               disk_write(filesys_disk, ce->sector_no, ce->data);
+               ce->dirty = false;
+           }
+        }
+        lock_release(&cache_lock); 
+    }
+}
 //[TODO 4] write_to_cache : Cache hit - modify data / Cache miss - insert new entry to cache
 
 int write_to_cache(disk_sector_t sector_idx, int sector_ofs, void *buffer, int length, bool partial)
