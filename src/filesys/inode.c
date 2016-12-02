@@ -11,15 +11,29 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+#define DIRECT_INDEX_SIZE 9
+#define INDIRECT_INDEX_SIZE 4
+
+#define DIRECT_INDEX_RANGE 9
+#define INDIRECT_INDEX_RANGE (9 + 128 * 4)
+
+
 /* On-disk inode.
    Must be exactly DISK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    disk_sector_t start;                /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    uint32_t unused[112];               /* Not used. */
+    disk_sector_t direct_idx[9];
+    disk_sector_t indirect_idx[4];
+    disk_sector_t double_indirect_idx;
   };
+
+struct indirect_block
+{
+    disk_sector_t entry[128];
+};
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -34,7 +48,7 @@ struct inode
   {
     struct list_elem elem;              /* Element in inode list. */
     disk_sector_t sector;               /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
+    int open_cnt;                       /* Numer of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
     struct inode_disk data;             /* Inode content. */
@@ -49,9 +63,42 @@ byte_to_sector (const struct inode *inode, off_t pos)
 {
   ASSERT (inode != NULL);
   if (pos < inode->data.length)
-    return inode->data.start + pos / DISK_SECTOR_SIZE;
+    return (pos / DISK_SECTOR_SIZE);
   else
     return -1;
+}
+
+disk_sector_t
+byte_to_sector_indexed (struct inode *inode, off_t pos)
+{
+    ASSERT(inode != NULL);
+    if (pos < inode->data.length) {
+        disk_sector_t sector_pos = byte_to_sector(inode, pos);
+
+        if (sector_pos < DIRECT_INDEX_RANGE) {
+            return inode->data.direct_idx[sector_pos];
+        }
+        else if (sector_pos < INDIRECT_INDEX_RANGE) {
+            int indirect_index = (sector_pos - DIRECT_INDEX_SIZE) / 128;
+            int block_entry = (sector_pos - DIRECT_INDEX_SIZE) % 128;
+            struct indirect_block accessed_block;
+
+            disk_read(filesys_disk, inode->data.indirect_idx[indirect_index], &accessed_block);
+            return accessed_block.entry[block_entry];
+        }
+        else {
+            int first_block_entry = (sector_pos - INDIRECT_INDEX_RANGE) / 128;
+            int second_block_entry = (sector_pos - INDIRECT_INDEX_RANGE) % 128;
+            struct indirect_block accessed_first_block;
+            struct indirect_block accessed_second_block;
+            disk_read(filesys_disk, inode->data.double_indirect_idx, &accessed_first_block);
+            disk_read(filesys_disk, accessed_first_block.entry[first_block_entry], &accessed_second_block);
+            return accessed_second_block.entry[second_block_entry];
+        }
+
+    }
+    else
+        return -1;
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -88,21 +135,121 @@ inode_create (disk_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-      if (free_map_allocate (sectors, &disk_inode->start))
-        {
-          disk_write (filesys_disk, sector, disk_inode);
-          if (sectors > 0) 
-            {
-              static char zeros[DISK_SECTOR_SIZE];
-              size_t i;
-              
-              for (i = 0; i < sectors; i++) 
-                disk_write (filesys_disk, disk_inode->start + i, zeros); 
-            }
-          success = true; 
-        } 
+
+      size_t i, j;
+      static char zeros[DISK_SECTOR_SIZE];
+      /* CASE 1 */
+      if (sectors <= DIRECT_INDEX_RANGE) {
+          for (i = 0 ; i < sectors ; i++) {
+              free_map_allocate(1, &disk_inode->direct_idx[i]);
+              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+          }
+          disk_write(filesys_disk, sector, disk_inode);
+          success = true;
+      }
+      
+      /* CASE 2 */
+      else if (sectors <= INDIRECT_INDEX_RANGE) {
+          for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++ ) {
+              free_map_allocate(1, &disk_inode->direct_idx[i]);
+              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+              /* FILLED ZERO IN ACTUAL DATA SECTOR */
+          }
+
+          size_t last_indirect_index = (sectors - DIRECT_INDEX_SIZE) / 128;
+          size_t last_indirect_block_index = (sectors - DIRECT_INDEX_SIZE) % 128;
+          struct indirect_block single;
+          for (i = 0 ; i < last_indirect_index ; i++) {
+              free_map_allocate(1, &disk_inode->indirect_idx[i]);
+              //Fill the indirect block's entry
+              for (j = 0 ; j < 128 ; j++) {
+                  free_map_allocate(1, &single.entry[j]);
+                  disk_write(filesys_disk, single.entry[j], zeros);
+                  //printf("%d block entry : %d sector\n", j, single.entry[j]);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
+          }
+   
+          /* Last indirect block - partially filled */
+          if (last_indirect_block_index != 0) {
+              free_map_allocate(1, &disk_inode->indirect_idx[last_indirect_index]);
+              for (i = 0; i < last_indirect_block_index + 1; i++) {
+                  free_map_allocate(1, &single.entry[i]);
+                  disk_write(filesys_disk, single.entry[i], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+          else {
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+      }
+
+      /* CASE 3 */
+      else {
+          //Doubly-indirect block
+          //1. Fill all of the previous index first!
+          for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++ ) {
+              free_map_allocate(1, &disk_inode->direct_idx[i]);
+              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+              /* FILLED ZERO IN ACTUAL DATA SECTOR */
+          }
+
+          struct indirect_block single;
+          struct indirect_block doubly;
+          for (i = 0 ; i < INDIRECT_INDEX_SIZE ; i++) {
+              free_map_allocate(1, &disk_inode->indirect_idx[i]);
+              //Fill the indirect block's entry
+              for (j = 0 ; j < 128 ; j++) {
+                  free_map_allocate(1, &single.entry[j]);
+                  disk_write(filesys_disk, single.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
+          }
+
+          //2. Fill the 2-level index blocks
+          size_t first_level_index = (sectors - INDIRECT_INDEX_RANGE) / 128;
+          size_t second_level_index = (sectors - INDIRECT_INDEX_RANGE) % 128;
+          free_map_allocate(1, &disk_inode->double_indirect_idx);
+
+          for (i = 0 ; i < first_level_index ; i++) {
+              free_map_allocate(1, &single.entry[i]);
+              for (j = 0 ; j < 128 ; j++) {
+                  free_map_allocate(1, &doubly.entry[j]);
+                  disk_write(filesys_disk, doubly.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, single.entry[i], &doubly);
+          }
+          /* Fill the last partial one */
+          if (second_level_index != 0) {
+              free_map_allocate(1, &single.entry[first_level_index]);
+              for (j = 0; j < second_level_index + 1; j++) {
+                  free_map_allocate(1, &doubly.entry[j]);
+                  disk_write(filesys_disk, doubly.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, single.entry[first_level_index], &doubly);
+              /* ALL INDEX ALLOCATED */
+              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+          else {
+              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+      } //3 CASES
+
       free (disk_inode);
-    }
+    } //disk_inode != NULL
   return success;
 }
 
@@ -175,11 +322,85 @@ inode_close (struct inode *inode)
       list_remove (&inode->elem);
  
       /* Deallocate blocks if removed. */
-      if (inode->removed) 
+     if (inode->removed) 
         {
+            struct inode_disk *disk_inode = &inode->data;
+            int length = inode->data.length;
+            int sectors = bytes_to_sectors (length);
+            int i, j;
+           /* CASE 1 */
+            if (sectors <= DIRECT_INDEX_RANGE) {
+                for (i = 0; i < sectors ; i++) {
+                    free_map_release(disk_inode->direct_idx[i], 1);
+                }
+            }
+           /* CASE 2 */
+            else if (sectors <= INDIRECT_INDEX_RANGE) {
+                for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++ ) {
+                    free_map_release(disk_inode->direct_idx[i], 1);
+                }
+                int last_indirect_index = (sectors - DIRECT_INDEX_SIZE) / 128;
+                int last_indirect_block_index = (sectors - DIRECT_INDEX_SIZE) % 128;
+                struct indirect_block single;
+                
+                for (i = 0; i < last_indirect_index ; i++) {
+                    disk_read(filesys_disk, disk_inode->indirect_idx[i], &single);
+                    for (j = 0; j<128; j++) {
+                        free_map_release(single.entry[j], 1);
+                    }
+                    free_map_release(disk_inode->indirect_idx[i], 1);
+                }
+                if (last_indirect_block_index != 0) {
+                    disk_read(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
+                    for (i=0; i< last_indirect_block_index ; i++) {
+                        free_map_release(single.entry[i], 1);
+                    }
+                    free_map_release(disk_inode->indirect_idx[last_indirect_index], 1);
+                }
+
+            }
+
+            /* CASE 3 */
+            else {
+                for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++) {
+                    free_map_release(disk_inode->direct_idx[i], 1);
+                }
+
+                struct indirect_block single;
+                struct indirect_block doubly;
+                for (i = 0; i < INDIRECT_INDEX_SIZE ; i++) {
+                    disk_read(filesys_disk, disk_inode->indirect_idx[i], &single);
+                    for (j = 0; j < 128; j++) {
+                        free_map_release(single.entry[j], 1);
+                    }
+                    free_map_release(disk_inode->indirect_idx[i], 1);
+                }
+
+                int first_level_index = (sectors - INDIRECT_INDEX_RANGE) / 128;
+                int second_level_index = (sectors - INDIRECT_INDEX_RANGE) % 128;
+                disk_read(filesys_disk, disk_inode->double_indirect_idx, &single);
+                for (i = 0; i < first_level_index; i++) {
+                    disk_read(filesys_disk, single.entry[i], &doubly);
+                    for (j = 0; j < 128; j++) {
+                        free_map_release(doubly.entry[j], 1);
+                    }
+                    free_map_release(single.entry[i], 1);
+                }
+
+                if (second_level_index != 0) {
+                    disk_read(filesys_disk, single.entry[first_level_index], &doubly);
+                    for (j=0; j<second_level_index; j++) {
+                        free_map_release(doubly.entry[j], 1);
+                    }
+                    free_map_release(single.entry[first_level_index], 1);
+                }
+                free_map_release(disk_inode->double_indirect_idx, 1);
+              
+
+            }
           free_map_release (inode->sector, 1);
-          free_map_release (inode->data.start,
-                            bytes_to_sectors (inode->data.length)); 
+          //free_map_release (inode->data.start,
+                           // bytes_to_sectors (inode->data.length)); 
         }
 
       free (inode); 
@@ -207,7 +428,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   while (size > 0) 
     {
       /* Disk sector to read, starting byte offset within sector. */
-      disk_sector_t sector_idx = byte_to_sector (inode, offset);
+      disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset);
+      //printf("sector_idx : %x\n", sector_idx);
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -248,7 +470,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
-      disk_sector_t sector_idx = byte_to_sector (inode, offset);
+      disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset);
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
