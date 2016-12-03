@@ -124,6 +124,8 @@ struct thread
     //int original_pri; //original priority .. for calling set_priority when having donated priority
     //struct lock *acquiring_lock;
     //struct list acquired_lock_list;
+	/*filesys directory*/
+	struct dir *current_dir;
   };
 
 /* If false (default), use round-robin scheduler.

@@ -8,6 +8,9 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "threads/pte.h"
+#include "filesys/directory.h"
+#include "filesys/free-map.h"
+#include "filesys/inode.h"
 
 #define ARG_MAX 3
 #define STACK_SIZE 262144
@@ -273,6 +276,36 @@ syscall_handler (struct intr_frame *f)
 		munmap(arg[0]);
 		break;
 	}
+	case SYS_CHDIR:
+	{
+		get_arg(f, arg, 1);
+		f->eax = chdir((const char*)arg[0]);
+		break;
+	}
+	case SYS_MKDIR:
+	{
+		get_arg(f, arg, 1);
+		f->eax = mkdir((const char*)arg[0]);
+		break;
+	}
+	case SYS_READDIR:
+	{
+		get_arg(f, arg, 2);
+		f->eax = readdir((int) arg[0], (char *)arg[1]);
+		break;
+	}
+	case SYS_ISDIR:
+	{
+		get_arg(f, arg, 1);
+		f->eax = isdir((int) arg[0]);
+		break;
+	}
+	case SYS_INUMBER:
+	{
+		get_arg(f, arg, 1);
+		f->eax = inumber((int) arg[0]);
+		break;
+	}
   }
   ptr_unpin(pg_round_down((void*)f->esp));
 }
@@ -302,57 +335,204 @@ int create(const char *name, unsigned size) {
 int remove(const char *file) {
     if (!userptr_valid(file))
         exit(-1);
-    frame_pin((void*)file, strlen(file)+1);
-	lock_acquire(&filesys_lock);
-    int ret = filesys_remove(file);
-    lock_release(&filesys_lock);
+
+	struct dir *temp_dir;
+
+	if (file[0] == '/') {
+		temp_dir = dir_open_root();
+	} else {
+		temp_dir = thread_current()->current_dir;	
+	}
+	
+	int count = 0;
+	char *save_ptr_1, *token_1;
+	for (token_1 = strtok_r(file, "/", &save_ptr_1); token_1 != NULL;
+			token_1 = strtok_r(NULL, " ", &save_ptr_1)) {
+		count++;
+	}
+
+	int i = 0;
+	char *save_ptr_2, *token_2 , *name;
+	for (token_2 = strtok_r(file, "/", &save_ptr_2); token_2 != NULL; 
+				token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
+		struct inode *temp_inode;
+		if (i<count-1) {
+			dir_lookup(temp_dir, token_2, &temp_inode);
+			if (!temp_inode) {
+				return -1;
+			}
+			dir_close(temp_dir);
+			temp_dir = dir_open(temp_inode);
+			i++;
+		} else {
+			name = token_2;
+		}
+	}
+
+	struct inode *temp_inode;
+	dir_lookup(temp_dir, name, &temp_inode);
+	if (!temp_inode) {
+		return -1;
+	}
+
+	struct dir_entry e;
+	int pos = 2*(sizeof e);
+	while (inode_read_at(temp_inode, &e, sizeof e, pos) == sizeof e) {
+		pos += sizeof e;
+		if (e.in_use)
+		{
+			return -1;
+		}
+	}
+
+	int ret;
+	//frame_pin((void*)file, strlen(file)+1);
+	if (!temp_inode->data.is_dir) {
+    	lock_acquire(&filesys_lock);
+    	ret = filesys_remove(name);
+    	lock_release(&filesys_lock);
+	} else {
+		ret = dir_remove(temp_dir, name);
+		dir_close(temp_dir);
+	}
 	frame_unpin((void*)file, strlen(file)+1);
     return ret;
 }
 
 
 int open(const char *name) {
-    if (!userbuf_valid(name, strlen(name)+1)) {
+	if (!userbuf_valid(name, strlen(name)+1)) {
         //printf("string ptr %x is not valid\n", name);
         exit(-1);
     }
-   int fd;
-   //frame_pin((void*)name, strlen(name)+1);
-   lock_acquire(&filesys_lock);
-   struct file* openfile = filesys_open((const char*)name);
-   lock_release(&filesys_lock);
-   if (!openfile) {
-	   frame_unpin((void*)name, strlen(name)+1);
-       return -1;
-   }
+	struct dir *temp_dir;
+	if (name[0] == '/') {
+		temp_dir = dir_open_root();
+	} else {
+		temp_dir = thread_current()->current_dir;	
+		printf("%x\n", temp_dir);
+	}
+	
+	int count = 0;
+	char *save_ptr_1, *token_1;
+	for (token_1 = strtok_r(name, "/", &save_ptr_1); token_1 != NULL;
+			token_1 = strtok_r(NULL, " ", &save_ptr_1)) {
+		count++;
+	}
 
-   struct list *file_list = &thread_current()->file_list;
-   struct file_elem *fe = malloc(sizeof(struct file_elem));
+	printf("count : %d\n",count);
 
-   if (!fe) {
-       lock_acquire(&filesys_lock);
-       file_close(openfile);
-       lock_release(&filesys_lock);
-	   frame_unpin((void*)name, strlen(name)+1);
-       return -1;
-   }
-   
-   fe->name = openfile;
-   fd = fe->fd = thread_current()->fd_num++;
-   strlcpy(fe->filename, name, strlen(name)+1);
-   list_push_back(file_list, &fe->elem);
-   frame_unpin((void*)name, strlen(name)+1);
-   return fd;
+	int i = 0;
+	char *save_ptr_2, *token_2;
+	char name_2[14];
+	for (token_2 = strtok_r(name, "/", &save_ptr_2); token_2 != NULL; 
+				token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
+		struct inode *temp_inode;
+		if (i<count-1) {
+			dir_lookup(temp_dir, token_2, &temp_inode);
+			if (!temp_inode) {
+				return -1;
+			}
+			dir_close(temp_dir);
+			temp_dir = dir_open(temp_inode);
+			printf("token : %s\n", token_2);
+			i++;
+		} else {
+			strlcpy(name_2,token_2,strlen(token_2)+1);
+		}
+	printf("token : %s\n", token_2);
+	}
+	printf("token : %s\n", token_2);
+	if (count == 1) {
+		printf("strlcpy before\n");
+		strlcpy(name_2, name, strlen(name)+1);
+		printf("strlcpy after\n");
+	}
+	printf("name_2 : %s\n", name_2);
+	struct inode *temp_inode;
+	dir_lookup(temp_dir, name_2, &temp_inode);
+	if (!temp_inode) {
+printf("1\n");
+		return false;
+	}
+	
+
+	int fd;
+	if (!temp_inode->data.is_dir) {
+		//frame_pin((void*)name, strlen(name)+1);
+		lock_acquire(&filesys_lock);
+		struct file* openfile = filesys_open_dir((const char*)name_2, temp_dir);
+		lock_release(&filesys_lock);
+		if (!openfile) {
+			frame_unpin((void*)name, strlen(name)+1);
+			return -1;
+		}
+
+		struct list *file_list = &thread_current()->file_list;
+		struct file_elem *fe = malloc(sizeof(struct file_elem));
+
+		if (!fe) {
+			lock_acquire(&filesys_lock);
+			file_close(openfile);
+			lock_release(&filesys_lock);
+			frame_unpin((void*)name, strlen(name)+1);
+			return -1;
+		}
+		fe->dir_name = NULL;
+		fe->name = openfile;
+		fd = fe->fd = thread_current()->fd_num++;
+		strlcpy(fe->filename, name_2, strlen(name_2)+1);
+		list_push_back(file_list, &fe->elem);
+		frame_unpin((void*)name, strlen(name)+1);
+		return fd;
+	} else {
+		dir_close(temp_dir);
+		temp_dir = dir_open(temp_inode);
+		if (!temp_dir) {
+			frame_unpin((void*)name, strlen(name)+1);
+			return -1;
+		}
+
+		struct list *file_list = &thread_current()->file_list;
+		struct file_elem *fe = malloc(sizeof(struct file_elem));
+
+		if (!fe) {
+			dir_close(temp_dir);
+			frame_unpin((void*)name, strlen(name)+1);
+			return -1;
+		}
+		
+		fe->dir_name = temp_dir;
+		fe->name = NULL;
+		fd = fe->fd = thread_current()->fd_num++;
+		//strlcpy(fe->filename, name_2, strlen(name_2)+1);
+		list_push_back(file_list, &fe->elem);
+		frame_unpin((void*)name, strlen(name)+1);
+		return fd;
+
+	}
+	
 }
 
 struct file *find_file_desc(int fd) {
     struct list_elem *e;
     struct file_elem *fe;
-    struct file *target;
     for (e = list_begin(&thread_current()->file_list); e != list_end(&thread_current()->file_list); e = list_next(e)) {
         fe = list_entry(e, struct file_elem, elem);
         if (fe->fd == fd) {
             return fe->name;
+        }
+    }
+    return NULL;
+}
+
+struct dir *find_dir_desc(int fd) {
+    struct list_elem *e;
+    struct file_elem *fe;
+    for (e = list_begin(&thread_current()->file_list); e != list_end(&thread_current()->file_list); e = list_next(e)) {
+        fe = list_entry(e, struct file_elem, elem);
+        if (fe->fd == fd) {
+            return fe->dir_name;
         }
     }
     return NULL;
@@ -368,11 +548,16 @@ void close(int fd) {
     for (e = list_begin(file_list); e != list_end(file_list); e = list_next(e)) {
         fe = list_entry(e, struct file_elem, elem);
         if (fe->fd == fd) {
-            struct file *file_to_close = find_file_desc(fd);
+			if (!fe->dir_name) {
+            	struct file *file_to_close = find_file_desc(fd);
 
-            lock_acquire(&filesys_lock);
-            file_close(file_to_close);
-            lock_release(&filesys_lock);
+            	lock_acquire(&filesys_lock);
+            	file_close(file_to_close);
+            	lock_release(&filesys_lock);
+			} else {
+				struct dir *dir_to_close = find_dir_desc(fd);
+				dir_close(dir_to_close);
+			}
             e = list_next(e);
             list_remove(list_prev(e));
             free(fe);
@@ -666,4 +851,91 @@ void munmap (int mapid) {
     lock_release(&filesys_lock);
 	free(me);
 
+}
+
+int chdir(const char *dir) {
+	struct dir *temp_dir;
+	
+	if (dir[0] == '/') {
+		temp_dir = dir_open_root();
+	} else if ((dir[0] =='.' && dir[1] == '/') || (dir[0] == '.' && dir[1] == '.' && dir[2] == '/')) {
+		temp_dir = thread_current()->current_dir;	
+	} else {
+		return false;
+	}
+
+	char *save_ptr, *token;
+	for (token = strtok_r(dir, "/", &save_ptr); token != NULL; 
+				token = strtok_r (NULL, "/", &save_ptr)) {
+			struct inode *temp_inode;
+			dir_lookup(temp_dir, token, &temp_inode);
+			if (!temp_inode) {
+				return false;
+			}
+			dir_close(temp_dir);
+			temp_dir = dir_open(temp_inode);
+		}
+	thread_current()->current_dir = temp_dir;
+
+	return true;
+}
+
+int mkdir (const char *dir) {
+	struct dir *temp_dir;
+
+	if (dir[0] == '/') {
+		temp_dir = dir_open_root();
+	} else if ((dir[0] =='.' && dir[1] == '/') || (dir[0] == '.' && dir[1] == '.' && dir[2] == '/')) {
+		temp_dir = thread_current()->current_dir;	
+	} else {
+		return false;
+	}
+	
+	int count = 0;
+	char *save_ptr_1, *token_1;
+	for (token_1 = strtok_r(dir, "/", &save_ptr_1); token_1 != NULL;
+			token_1 = strtok_r(NULL, " ", &save_ptr_1)) {
+		count++;
+	}
+
+	int i = 0;
+	char *save_ptr_2, *token_2 , *name;
+	for (token_2 = strtok_r(dir, "/", &save_ptr_2); token_2 != NULL; 
+				token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
+		struct inode *temp_inode;
+		if (i<count-1) {
+			dir_lookup(temp_dir, token_2, &temp_inode);
+			if (!temp_inode) {
+				return false;
+			}
+			dir_close(temp_dir);
+			temp_dir = dir_open(temp_inode);
+			i++;
+		} else {
+			name = token_2;
+		}
+	}
+
+	disk_sector_t temp_inode_s = 0;
+	free_map_allocate(1,&temp_inode_s);
+	dir_create(temp_inode_s, 16);
+	dir_add(temp_dir, name, temp_inode_s);
+
+	return true;
+
+}
+
+int readdir (int fd, char *name) {
+	struct dir *dir_to_read = find_dir_desc(fd);
+	return dir_readdir (dir_to_read, name);
+}
+
+int isdir(int fd) {
+	struct dir *dir= find_dir_desc(fd);
+	return dir->inode->is_dir;
+}
+
+int inumber (int fd) {
+	struct dir *dir = find_dir_desc(fd);
+	return dir->inode->sector;
 }

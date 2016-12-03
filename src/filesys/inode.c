@@ -1,5 +1,4 @@
 #include "filesys/inode.h"
-#include <list.h>
 #include <debug.h>
 #include <round.h>
 #include <string.h>
@@ -20,15 +19,17 @@
 
 /* On-disk inode.
    Must be exactly DISK_SECTOR_SIZE bytes long. */
-struct inode_disk
-  {
-    off_t length;                       /* File size in bytes. */
-    unsigned magic;                     /* Magic number. */
-    uint32_t unused[112];               /* Not used. */
-    disk_sector_t direct_idx[9];
-    disk_sector_t indirect_idx[4];
-    disk_sector_t double_indirect_idx;
-  };
+//struct inode_disk
+//  {
+//    off_t length;                       /* File size in bytes. */
+//    unsigned magic;                     /* Magic number. */
+//    uint32_t unused[111];               /* Not used. */
+//    bool unused_bool[3];
+//	disk_sector_t direct_idx[9];
+//    disk_sector_t indirect_idx[4];
+//    disk_sector_t double_indirect_idx;
+//	bool is_dir;
+//  };
 
 struct indirect_block
 {
@@ -44,15 +45,16 @@ bytes_to_sectors (off_t size)
 }
 
 /* In-memory inode. */
-struct inode 
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    disk_sector_t sector;               /* Sector number of disk location. */
-    int open_cnt;                       /* Numer of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
-  };
+//struct inode 
+//  {
+//    struct list_elem elem;              /* Element in inode list. */
+//    disk_sector_t sector;               /* Sector number of disk location. */
+//    int open_cnt;                       /* Numer of openers. */
+//    bool removed;                       /* True if deleted, false otherwise. */
+//    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+//    struct inode_disk data;             /* Inode content. */
+//	bool is_dir;
+//  };
 
 /* Returns the disk sector that contains byte offset POS within
    INODE.
@@ -464,7 +466,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (disk_sector_t sector, off_t length)
+inode_create (disk_sector_t sector, off_t length, bool is_dir)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -481,7 +483,7 @@ inode_create (disk_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-
+	  disk_inode->is_dir = is_dir;
       success = alloc_sectors(disk_inode, sector, sectors);
 
       free (disk_inode);

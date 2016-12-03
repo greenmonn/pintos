@@ -4,11 +4,35 @@
 #include <stdbool.h>
 #include "filesys/off_t.h"
 #include "devices/disk.h"
+#include <list.h>
+
+struct inode_disk 
+{
+	off_t length;
+	unsigned magic;
+	uint32_t unused[111];
+	//bool unused_bool[3];
+	disk_sector_t direct_idx[9];
+	disk_sector_t indirect_idx[4];
+	disk_sector_t double_indirect_idx;
+	bool is_dir;
+};
+
+struct inode
+{
+	struct list_elem elem;
+	disk_sector_t sector;
+	int open_cnt;
+	bool removed;
+	int deny_write_cnt;
+	struct inode_disk data;
+	bool is_dir;
+};
 
 struct bitmap;
 
 void inode_init (void);
-bool inode_create (disk_sector_t, off_t);
+bool inode_create (disk_sector_t, off_t, bool is_dir);
 struct inode *inode_open (disk_sector_t);
 struct inode *inode_reopen (struct inode *);
 disk_sector_t inode_get_inumber (const struct inode *);

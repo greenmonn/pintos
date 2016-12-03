@@ -5,7 +5,8 @@
 
 struct file_elem {
     struct file *name;
-    int fd;
+    struct dir *dir_name;
+	int fd;
     char filename[15];
     struct list_elem elem;
 	struct lock *file_lock;
@@ -27,6 +28,7 @@ struct child_elem {
 	bool waited;
     struct thread *TCB;
 };
+
 
 void syscall_init (void);
 
