@@ -157,7 +157,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 pagedir_set_accessed(t->pagedir, upage, true);
                 //pagedir_set_dirty(t->pagedir, upage, false);
                 //newfr = frame_find(kpage);
-                newfr->pin = false;
+                //newfr->pin = false;
                 return 1;
                 break; //Never reached
             case SWAP:
@@ -172,7 +172,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
                 //pagedir_set_dirty(t->pagedir, upage, true);
                 pagedir_set_accessed(t->pagedir, upage, true);
                 //newfr = frame_find(kpage);
-                newfr->pin = false;
+                //newfr->pin = false;
                 return 1;
                 break;
             case FRAME:
@@ -202,7 +202,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
 
                 pagedir_set_accessed(t->pagedir, upage, true);
                 //pagedir_set_dirty(t->pagedir, upage, false);
-                newfr->pin = false;
+                //newfr->pin = false;
                 return 1;
 
                 break;
@@ -236,7 +236,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
 
                 pagedir_set_accessed(t->pagedir, upage, true);
                 //pagedir_set_dirty(t->pagedir, upage, false);
-                newfr->pin = false;
+                //newfr->pin = false;
                 return 1;
 
                 break;
@@ -270,7 +270,7 @@ install_suppl_page(struct hash *pages, struct page *pg, void *fault_addr)
            	install_page(stk_pg, newfr, true);
 			pagedir_set_accessed(thread_current()->pagedir, upage, true);
 
-        newfr->pin = false;
+        //newfr->pin = false;
             //pagedir_set_dirty(t->pagedir, upage, false);
 
 			return 1;

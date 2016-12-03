@@ -91,6 +91,8 @@ userbuf_valid(char* ptr, int bufsize) {
             return false;
 
         }
+        struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
+        pg->fr->pin = true;
     }
     return true;
 }
@@ -105,7 +107,10 @@ userbuf_valid_no_code(char* ptr, int bufsize) {
         if (!userptr_valid_no_code(i)) {
             return false;
         }
+struct page *pg = page_lookup(thread_current()->suppl_pages, (void*)i);
+        pg->fr->pin = true;
     }
+    
     return true;
 }
     
@@ -286,7 +291,7 @@ int create(const char *name, unsigned size) {
     if (strlen(name) > 14) {
         return 0;
     }
-    frame_pin((void*)name, strlen(name)+1);
+    //frame_pin((void*)name, strlen(name)+1);
 	lock_acquire(&filesys_lock);
     int ret = filesys_create(name, size);
     lock_release(&filesys_lock);
@@ -312,7 +317,7 @@ int open(const char *name) {
         exit(-1);
     }
    int fd;
-   frame_pin((void*)name, strlen(name)+1);
+   //frame_pin((void*)name, strlen(name)+1);
    lock_acquire(&filesys_lock);
    struct file* openfile = filesys_open((const char*)name);
    lock_release(&filesys_lock);
@@ -396,7 +401,7 @@ void exit(int status) {
 int exec(const char *cmd_line) {
     if (!userbuf_valid(cmd_line, strlen(cmd_line)+1)) 
         exit(-1);
-	frame_pin((void*)cmd_line, strlen(cmd_line)+1);
+	//frame_pin((void*)cmd_line, strlen(cmd_line)+1);
 	int pid = process_execute(cmd_line);
 	frame_unpin((void*)cmd_line, strlen(cmd_line)+1);
 	return pid;
@@ -426,7 +431,7 @@ int write(int fd, const void *buffer, unsigned size)
     if (!userbuf_valid(buffer, size)) {
         exit(-1);
     }
-	frame_pin(buffer, size);
+	//frame_pin(buffer, size);
 
     //printf("user buffer check finish\n");
     const char *buf = (const char*)buffer;
@@ -469,7 +474,7 @@ int read(int fd, void *buffer, unsigned size)
     //TODO : deny buffer pointing code segment..
     //printf("user buffer check finish\n");
     //char* kerbuf = pagedir_get_page(thread_current()->pagedir, buffer);
-	frame_pin(buffer, size);
+	//frame_pin(buffer, size);
     char *buf = (char *)buffer;
     if (fd == STDIN_FILENO) {
         int index = 0;

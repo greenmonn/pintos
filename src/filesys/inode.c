@@ -59,21 +59,17 @@ struct inode
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 static disk_sector_t
-byte_to_sector (const struct inode *inode, off_t pos) 
+byte_to_sector (off_t pos) 
 {
-  ASSERT (inode != NULL);
-  if (pos < inode->data.length)
     return (pos / DISK_SECTOR_SIZE);
-  else
-    return -1;
 }
 
 disk_sector_t
 byte_to_sector_indexed (struct inode *inode, off_t pos)
 {
     ASSERT(inode != NULL);
-    if (pos < inode->data.length) {
-        disk_sector_t sector_pos = byte_to_sector(inode, pos);
+    if (pos < ROUND_UP(inode->data.length, DISK_SECTOR_SIZE)) {
+        disk_sector_t sector_pos = byte_to_sector(pos);
 
         if (sector_pos < DIRECT_INDEX_RANGE) {
             return inode->data.direct_idx[sector_pos];
@@ -101,6 +97,356 @@ byte_to_sector_indexed (struct inode *inode, off_t pos)
         return -1;
 }
 
+bool alloc_sectors(struct inode_disk *disk_inode, disk_sector_t sector, size_t sectors) {
+    bool success = false;
+    size_t i, j;
+    static char zeros[DISK_SECTOR_SIZE];
+
+    /* CASE 1 */
+    if (sectors <= DIRECT_INDEX_RANGE) {
+        for (i = 0 ; i < sectors ; i++) {
+            free_map_allocate(1, &disk_inode->direct_idx[i]);
+            disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+        }
+        disk_write(filesys_disk, sector, disk_inode);
+        success = true;
+    }
+
+    /* CASE 2 */
+    else if (sectors <= INDIRECT_INDEX_RANGE) {
+          for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++ ) {
+              free_map_allocate(1, &disk_inode->direct_idx[i]);
+              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+              /* FILLED ZERO IN ACTUAL DATA SECTOR */
+          }
+
+          size_t last_indirect_index = (sectors - DIRECT_INDEX_SIZE) / 128;
+          size_t last_indirect_block_index = (sectors - DIRECT_INDEX_SIZE) % 128;
+          struct indirect_block single;
+          for (i = 0 ; i < last_indirect_index ; i++) {
+              free_map_allocate(1, &disk_inode->indirect_idx[i]);
+              //Fill the indirect block's entry
+              for (j = 0 ; j < 128 ; j++) {
+                  free_map_allocate(1, &single.entry[j]);
+                  disk_write(filesys_disk, single.entry[j], zeros);
+                  //printf("%d block entry : %d sector\n", j, single.entry[j]);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
+          }
+   
+          /* Last indirect block - partially filled */
+          if (last_indirect_block_index != 0) {
+              free_map_allocate(1, &disk_inode->indirect_idx[last_indirect_index]);
+              for (i = 0; i < last_indirect_block_index; i++) {
+                  free_map_allocate(1, &single.entry[i]);
+                  disk_write(filesys_disk, single.entry[i], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+          else {
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+      }
+
+      /* CASE 3 */
+      else {
+          //Doubly-indirect block
+          //1. Fill all of the previous index first!
+          for (i = 0 ; i <= DIRECT_INDEX_SIZE ; i++ ) {
+              free_map_allocate(1, &disk_inode->direct_idx[i]);
+              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+              /* FILLED ZERO IN ACTUAL DATA SECTOR */
+          }
+
+          struct indirect_block single;
+          struct indirect_block doubly;
+          for (i = 0 ; i <= INDIRECT_INDEX_SIZE ; i++) {
+              free_map_allocate(1, &disk_inode->indirect_idx[i]);
+              //Fill the indirect block's entry
+              for (j = 0 ; j < 128 ; j++) {
+                  free_map_allocate(1, &single.entry[j]);
+                  disk_write(filesys_disk, single.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
+          }
+
+          //2. Fill the 2-level index blocks
+          size_t first_level_index = (sectors - INDIRECT_INDEX_RANGE) / 128;
+          size_t second_level_index = (sectors - INDIRECT_INDEX_RANGE) % 128;
+          free_map_allocate(1, &disk_inode->double_indirect_idx);
+
+          for (i = 0 ; i < first_level_index ; i++) {
+              free_map_allocate(1, &single.entry[i]);
+              for (j = 0 ; j < 128 ; j++) {
+                  free_map_allocate(1, &doubly.entry[j]);
+                  disk_write(filesys_disk, doubly.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, single.entry[i], &doubly);
+          }
+          /* Fill the last partial one */
+          if (second_level_index != 0) {
+              free_map_allocate(1, &single.entry[first_level_index]);
+              for (j = 0; j < second_level_index; j++) {
+                  free_map_allocate(1, &doubly.entry[j]);
+                  disk_write(filesys_disk, doubly.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, single.entry[first_level_index], &doubly);
+              /* ALL INDEX ALLOCATED */
+              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+          else {
+              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+      } //end of 'else'
+      return success;
+}
+
+bool alloc_sectors_grow(struct inode *inode, disk_sector_t sector, size_t sectors, size_t newlength) {
+    bool success = false;
+    struct inode_disk *disk_inode = &inode->data;
+    size_t i, j;
+    static char zeros[DISK_SECTOR_SIZE];
+
+    //struct inode_disk previous_data;
+    //memcpy(&previous_data, disk_inode, sizeof(struct inode_disk));
+
+    size_t pos = byte_to_sector(disk_inode->length);
+    inode->data.length = newlength;
+
+    //printf("current %dst sector -> grow to %d sectors\n", pos, sectors);
+       
+    /* CASE 1 */
+    if (sectors <= DIRECT_INDEX_RANGE) {
+        for (i = pos ; i < sectors ; i++) {
+            free_map_allocate(1, &disk_inode->direct_idx[i]);
+            //printf("alloc direct_idx[%d] = %d\n", i, disk_inode->direct_idx[i]);
+            disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+        }
+        disk_write(filesys_disk, sector, disk_inode);
+        success = true;
+    }
+
+    /* CASE 2 */
+    else if (sectors <= INDIRECT_INDEX_RANGE) {
+        if (pos < DIRECT_INDEX_SIZE) {
+          for (i = pos; i < DIRECT_INDEX_SIZE ; i++ ) {
+              free_map_allocate(1, &disk_inode->direct_idx[i]);
+              //printf("alloc direct_idx[%d], sector %d\n", i, disk_inode->direct_idx[i]);
+              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+              /* FILLED ZERO IN ACTUAL DATA SECTOR */
+          }
+        }
+
+        size_t curr_indirect_index = (pos - DIRECT_INDEX_SIZE) / 128;
+        size_t curr_block_entry = (pos - DIRECT_INDEX_SIZE) % 128;
+        if (pos < DIRECT_INDEX_SIZE) {
+            curr_indirect_index = 0;
+            curr_block_entry = 0;
+        }
+
+
+          size_t last_indirect_index = (sectors - DIRECT_INDEX_SIZE) / 128;
+          size_t last_indirect_block_index = (sectors - DIRECT_INDEX_SIZE) % 128;
+          struct indirect_block single;
+          for (i = curr_indirect_index ; i < last_indirect_index ; i++) {
+              if (i != curr_indirect_index) {
+                  /* New index block */
+                  free_map_allocate(1, &disk_inode->indirect_idx[i]);
+                  //printf("Create single indirect index block[%d] : %d\n", i, disk_inode->indirect_idx[i]);
+              }               
+              //Fill the indirect block's entry
+              if (i == curr_indirect_index) {
+                  j = curr_block_entry;
+                  if (curr_block_entry == 0) {
+                      /* New index block */
+                      free_map_allocate(1, &disk_inode->indirect_idx[i]);
+                  }
+                  else {
+                      /* partially filled index block is already exist */
+                      disk_read(filesys_disk, disk_inode->indirect_idx[i], &single); 
+                  }
+              } else {
+                  j = 0;
+              }
+
+              for ( ; j < 128 ; j++) {
+                  free_map_allocate(1, &single.entry[j]);
+                  disk_write(filesys_disk, single.entry[j], zeros);
+                  //printf("%d block entry : %d sector\n", j, single.entry[j]);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
+          }
+
+          /* Last indirect block - partially filled */
+          if (last_indirect_block_index != 0) {
+              if (last_indirect_index == curr_indirect_index) {
+                  /* Should handle case : start position is not 'first of the index block' - index block is already allocated! */
+                  i = curr_block_entry;
+                  if (curr_block_entry == 0) {
+                      free_map_allocate(1, &disk_inode->indirect_idx[last_indirect_index]);
+
+                      //printf("Create single indirect index block[%d] : %d\n", i, disk_inode->indirect_idx[i]);
+                  }
+                  else {
+                      /* partially filled index block is already exist */
+                      disk_read(filesys_disk, disk_inode->indirect_idx[curr_indirect_index], &single); 
+                      //printf("read from existing index block %d\n", disk_inode->indirect_idx[i]);
+                  }
+              } else {
+                  free_map_allocate(1, &disk_inode->indirect_idx[last_indirect_index]);
+                  //printf("Create single indirect index block[%d] : %d\n", i, disk_inode->indirect_idx[i]);
+                  i = 0;
+              }
+              for ( ; i < last_indirect_block_index; i++) {
+                  free_map_allocate(1, &single.entry[i]);
+                  //printf("alloc single.entry[%d] : %d\n", i, single.entry[i]);
+                  disk_write(filesys_disk, single.entry[i], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+          else {
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+      }
+
+      /* CASE 3 */
+      else {
+          //Doubly-indirect block
+          //1. Fill all of the previous index first!
+          if (pos < DIRECT_INDEX_SIZE) {
+              for (i = pos ; i < DIRECT_INDEX_SIZE ; i++ ) {
+                  free_map_allocate(1, &disk_inode->direct_idx[i]);
+                  disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+          }
+
+          struct indirect_block single;
+          struct indirect_block doubly;
+
+          if (pos < INDIRECT_INDEX_RANGE) {
+              int curr_indirect_index = (pos - DIRECT_INDEX_SIZE) / 128;
+              int curr_block_entry = (pos - DIRECT_INDEX_SIZE) % 128;
+
+              if (pos < DIRECT_INDEX_SIZE) {
+                  curr_indirect_index = 0;
+                  curr_block_entry = 0;
+              }
+
+              for (i = curr_indirect_index ; i < INDIRECT_INDEX_SIZE ; i++) {
+                  //Fill the single indirect block's entry
+                  if (i == curr_indirect_index) {
+                      j = curr_block_entry;
+                      if (curr_block_entry == 0) {
+                          free_map_allocate(1, &disk_inode->indirect_idx[i]);
+                      } else {
+                          /* partially filled index block is already exist */
+                          disk_read(filesys_disk, disk_inode->indirect_idx[i], &single);
+                      }
+                  } else {
+
+                      free_map_allocate(1, &disk_inode->indirect_idx[i]);
+                      j = 0;
+                  }
+                  for ( ; j < 128 ; j++) {
+                      free_map_allocate(1, &single.entry[j]);
+                      disk_write(filesys_disk, single.entry[j], zeros);
+                      /* FILLED ZERO IN ACTUAL DATA SECTOR */
+                  }
+                  disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
+              }
+          }
+
+          //2. Fill the 2-level index blocks
+          size_t curr_first_idx = (pos - INDIRECT_INDEX_RANGE) / 128;
+          size_t curr_second_idx = (pos - INDIRECT_INDEX_RANGE) % 128;
+
+          if (pos < INDIRECT_INDEX_RANGE) {
+              curr_first_idx = 0;
+              curr_second_idx = 0;
+          }
+
+          size_t first_level_index = (sectors - INDIRECT_INDEX_RANGE) / 128;
+          size_t second_level_index = (sectors - INDIRECT_INDEX_RANGE) % 128;
+          if(curr_first_idx == 0 && curr_second_idx == 0) {
+            free_map_allocate(1, &disk_inode->double_indirect_idx);
+          } else {
+              disk_read(filesys_disk, disk_inode->double_indirect_idx, &single);
+          }
+
+          for (i = curr_first_idx ; i < first_level_index ; i++) {
+
+              if (i == curr_first_idx) {
+                  j = curr_second_idx;
+                  if (curr_second_idx == 0) {
+
+                      free_map_allocate(1, &single.entry[i]);
+                  } else {
+                      disk_read(filesys_disk, single.entry[i], &doubly);
+                  }
+              }
+              else {
+                  free_map_allocate(1, &single.entry[i]);
+                  j = 0;
+              }
+              for ( ; j < 128 ; j++) {
+                  free_map_allocate(1, &doubly.entry[j]);
+                  disk_write(filesys_disk, doubly.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, single.entry[i], &doubly);
+          }
+          /* Fill the last partial one */
+          if (second_level_index != 0) {
+              free_map_allocate(1, &single.entry[first_level_index]);
+              if (first_level_index == curr_first_idx) {
+                  j = curr_second_idx;
+                  if (j == 0) {
+                      free_map_allocate(1, &single.entry[first_level_index]);
+                  } else {
+                      disk_read(filesys_disk, single.entry[first_level_index], &doubly);
+                  }
+              } else {
+                  free_map_allocate(1, &single.entry[first_level_index]);
+                  j = 0;
+              } 
+              for ( ; j < second_level_index; j++) {
+                  free_map_allocate(1, &doubly.entry[j]);
+                  disk_write(filesys_disk, doubly.entry[j], zeros);
+                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
+              }
+              disk_write(filesys_disk, single.entry[first_level_index], &doubly);
+              /* ALL INDEX ALLOCATED */
+              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+          else {
+              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
+              disk_write(filesys_disk, sector, disk_inode);
+              success = true;
+          }
+      } //end of 'else'
+      return success;
+}
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
@@ -136,117 +482,7 @@ inode_create (disk_sector_t sector, off_t length)
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
 
-      size_t i, j;
-      static char zeros[DISK_SECTOR_SIZE];
-      /* CASE 1 */
-      if (sectors <= DIRECT_INDEX_RANGE) {
-          for (i = 0 ; i < sectors ; i++) {
-              free_map_allocate(1, &disk_inode->direct_idx[i]);
-              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
-          }
-          disk_write(filesys_disk, sector, disk_inode);
-          success = true;
-      }
-      
-      /* CASE 2 */
-      else if (sectors <= INDIRECT_INDEX_RANGE) {
-          for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++ ) {
-              free_map_allocate(1, &disk_inode->direct_idx[i]);
-              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
-              /* FILLED ZERO IN ACTUAL DATA SECTOR */
-          }
-
-          size_t last_indirect_index = (sectors - DIRECT_INDEX_SIZE) / 128;
-          size_t last_indirect_block_index = (sectors - DIRECT_INDEX_SIZE) % 128;
-          struct indirect_block single;
-          for (i = 0 ; i < last_indirect_index ; i++) {
-              free_map_allocate(1, &disk_inode->indirect_idx[i]);
-              //Fill the indirect block's entry
-              for (j = 0 ; j < 128 ; j++) {
-                  free_map_allocate(1, &single.entry[j]);
-                  disk_write(filesys_disk, single.entry[j], zeros);
-                  //printf("%d block entry : %d sector\n", j, single.entry[j]);
-                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
-              }
-              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
-          }
-   
-          /* Last indirect block - partially filled */
-          if (last_indirect_block_index != 0) {
-              free_map_allocate(1, &disk_inode->indirect_idx[last_indirect_index]);
-              for (i = 0; i < last_indirect_block_index + 1; i++) {
-                  free_map_allocate(1, &single.entry[i]);
-                  disk_write(filesys_disk, single.entry[i], zeros);
-                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
-
-              }
-              disk_write(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
-              disk_write(filesys_disk, sector, disk_inode);
-              success = true;
-          }
-          else {
-              disk_write(filesys_disk, sector, disk_inode);
-              success = true;
-          }
-      }
-
-      /* CASE 3 */
-      else {
-          //Doubly-indirect block
-          //1. Fill all of the previous index first!
-          for (i = 0 ; i < DIRECT_INDEX_SIZE ; i++ ) {
-              free_map_allocate(1, &disk_inode->direct_idx[i]);
-              disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
-              /* FILLED ZERO IN ACTUAL DATA SECTOR */
-          }
-
-          struct indirect_block single;
-          struct indirect_block doubly;
-          for (i = 0 ; i < INDIRECT_INDEX_SIZE ; i++) {
-              free_map_allocate(1, &disk_inode->indirect_idx[i]);
-              //Fill the indirect block's entry
-              for (j = 0 ; j < 128 ; j++) {
-                  free_map_allocate(1, &single.entry[j]);
-                  disk_write(filesys_disk, single.entry[j], zeros);
-                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
-              }
-              disk_write(filesys_disk, disk_inode->indirect_idx[i], &single);
-          }
-
-          //2. Fill the 2-level index blocks
-          size_t first_level_index = (sectors - INDIRECT_INDEX_RANGE) / 128;
-          size_t second_level_index = (sectors - INDIRECT_INDEX_RANGE) % 128;
-          free_map_allocate(1, &disk_inode->double_indirect_idx);
-
-          for (i = 0 ; i < first_level_index ; i++) {
-              free_map_allocate(1, &single.entry[i]);
-              for (j = 0 ; j < 128 ; j++) {
-                  free_map_allocate(1, &doubly.entry[j]);
-                  disk_write(filesys_disk, doubly.entry[j], zeros);
-                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
-              }
-              disk_write(filesys_disk, single.entry[i], &doubly);
-          }
-          /* Fill the last partial one */
-          if (second_level_index != 0) {
-              free_map_allocate(1, &single.entry[first_level_index]);
-              for (j = 0; j < second_level_index + 1; j++) {
-                  free_map_allocate(1, &doubly.entry[j]);
-                  disk_write(filesys_disk, doubly.entry[j], zeros);
-                  /* FILLED ZERO IN ACTUAL DATA SECTOR */
-              }
-              disk_write(filesys_disk, single.entry[first_level_index], &doubly);
-              /* ALL INDEX ALLOCATED */
-              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
-              disk_write(filesys_disk, sector, disk_inode);
-              success = true;
-          }
-          else {
-              disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
-              disk_write(filesys_disk, sector, disk_inode);
-              success = true;
-          }
-      } //3 CASES
+      success = alloc_sectors(disk_inode, sector, sectors);
 
       free (disk_inode);
     } //disk_inode != NULL
@@ -471,17 +707,37 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     {
       /* Sector to write, starting byte offset within sector. */
       disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset);
+      //printf("@SECTOR %d\n", sector_idx);
+
+      if (sector_idx == -1) {   //File grow
+          int grow_bytes = offset+size - inode->data.length;
+          if (grow_bytes > 0) {
+              int sectors = bytes_to_sectors (offset + size);
+              //printf("now %d grow to %d : allocate %d\n", inode_length(inode), offset+size, sectors);
+
+              alloc_sectors_grow(inode, inode->sector, sectors, offset+size);
+              sector_idx = byte_to_sector_indexed (inode, offset);
+              //printf("new sector_idx : %d\n", sector_idx);
+          }
+      }
+      //printf("*** write to sector %d [offset : %d, size : %d]\n", sector_idx, offset, size);
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      off_t inode_left = inode_length (inode) - offset;
+      //off_t inode_left = inode_length (inode) - offset;
       int sector_left = DISK_SECTOR_SIZE - sector_ofs;
-      int min_left = inode_left < sector_left ? inode_left : sector_left;
+      //int min_left = inode_left < sector_left ? inode_left : sector_left;
 
       /* Number of bytes to actually write into this sector. */
-      int chunk_size = size < min_left ? size : min_left;
+      int chunk_size = size < sector_left ? size : sector_left;
       if (chunk_size <= 0)
         break;
+
+      if (inode_length(inode) < offset + chunk_size) {
+          inode->data.length = offset + chunk_size;
+          disk_write(filesys_disk, inode->sector, &inode->data);
+      }
+
 
       if (sector_ofs == 0 && chunk_size == DISK_SECTOR_SIZE) 
         {
@@ -490,6 +746,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         }
       else 
         {
+            //printf("write : chunk_size %d, sector_idx %d\n", chunk_size, sector_idx);
           /* We don't need a bounce buffer anymore. */
 
           /* If the sector contains data before or after the chunk

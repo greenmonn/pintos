@@ -38,7 +38,22 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
-  free_map_close ();
+    /* write back cache */
+    lock_acquire(&cache_lock);
+    struct hash_iterator i;
+    hash_first (&i, &buffer_cache);
+    while (hash_next(&i))
+    {
+        struct cache_entry *ce = hash_entry (hash_cur(&i), struct cache_entry, elem);
+        if (ce->dirty == true) {
+            disk_write(filesys_disk, ce->sector_no, ce->data);
+        }
+    }
+    lock_release(&cache_lock);
+
+
+    free_map_close ();
+
 }
 
 /* Creates a file named NAME with the given INITIAL_SIZE.

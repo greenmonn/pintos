@@ -6,8 +6,7 @@
 #include "filesys/filesys.h"
 #include "devices/timer.h"
 
-struct hash buffer_cache;
-struct lock cache_lock;
+
 
 static thread_func read_ahead_thread;
 static thread_func write_back_thread;

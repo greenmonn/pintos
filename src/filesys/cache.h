@@ -21,6 +21,9 @@ struct cache_entry
     void *data; //DISK_SECTOR_SIZE
 };
 
+struct hash buffer_cache;
+struct lock cache_lock;
+
 unsigned cache_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool cache_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 

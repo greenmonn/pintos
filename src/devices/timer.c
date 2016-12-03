@@ -178,7 +178,8 @@ wakeup_thread() {
         	if (t->wakeuptime <= timer_ticks()) {
             	e = list_remove(e);
             	e = list_prev(e);
-            	thread_unblock(t);
+                if(t->status == THREAD_BLOCKED)
+            	    thread_unblock(t);
         	} else {
 				break;
 			}

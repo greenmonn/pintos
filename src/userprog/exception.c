@@ -182,7 +182,6 @@ page_fault (struct intr_frame *f)
 
   thread_current()->esp = f->esp;
 
-  //printf("*\n page fault : %x enter\n", fault_addr);
   if (is_user_vaddr(fault_addr)) {   //Page fault of user virtual address
       //TODO 1 : find given faulted address in  supplemental page table of current thread
       struct hash *supp = thread_current ()->suppl_pages;
@@ -226,6 +225,13 @@ page_fault (struct intr_frame *f)
       //    thread_set_priority(PRI_MIN);
 
       success = install_suppl_page(supp, pg, fault_addr);
+      if (success) {
+          struct frame *fr = frame_find(pagedir_get_page(thread_current()->pagedir, fault_addr));
+          if (fr != NULL)
+            fr->pin = false;
+      }
+      //struct frame *fr = frame_find(pagedir_get_page(fault_addr));
+      //fr->pin = false;
 
 	 // if (!success) {
 	  //	if (fault_addr >= f->esp -32 && ((uint8_t) (PHYS_BASE)) -((uint8_t) (fault_addr)) <= STACK_SIZE) {
