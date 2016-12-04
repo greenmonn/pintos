@@ -371,9 +371,9 @@ int create(const char *name, unsigned size) {
             //printf("name is %s\n", name_2);
         }
     }
-    if (count <= 1) {
+    /*if (count <= 1) {
         strlcpy(name_2, new_name2, strlen(name)+1);
-    }
+    }*/
     free(new_name2);
 
     //disk_sector_t temp_inode_s = 0;
@@ -385,7 +385,7 @@ int create(const char *name, unsigned size) {
 
     lock_acquire(&filesys_lock);
     int ret = filesys_create(name_2, size, temp_dir);
-
+	//printf("filename : %s\n", name_2);
     dir_close(temp_dir);
     lock_release(&filesys_lock);
     frame_unpin((void*)name, strlen(name)+1);
@@ -395,6 +395,10 @@ int create(const char *name, unsigned size) {
 int remove(const char *file) {
     if (!userptr_valid(file))
         exit(-1);
+
+	if (strcmp(file,"/") == 0) {
+		return false;
+	}
 
 	struct dir *temp_dir;
 
@@ -406,7 +410,9 @@ int remove(const char *file) {
 	
 	int count = 0;
 	char *save_ptr_1, *token_1;
-	for (token_1 = strtok_r(file, "/", &save_ptr_1); token_1 != NULL;
+	char *file_cpy = malloc(strlen(file)+1);
+	strlcpy(file_cpy, file, strlen(file)+1);
+	for (token_1 = strtok_r(file_cpy, "/", &save_ptr_1); token_1 != NULL;
 			token_1 = strtok_r(NULL, "/", &save_ptr_1)) {
 		count++;
 	}
@@ -428,7 +434,6 @@ int remove(const char *file) {
 			strlcpy(name, token_2, strlen(token_2)+1);
 		}
 	}
-
 
 	struct inode *temp_inode;
 	dir_lookup(temp_dir, name, &temp_inode);
@@ -473,16 +478,40 @@ int open(const char *name) {
         //printf("string ptr %x is not valid\n", name);
         exit(-1);
     }
+
 	struct dir *temp_dir;
 	if (name[0] == '/') {
 		temp_dir = dir_open_root();
 	} else {
 		temp_dir = dir_reopen(thread_current()->current_dir);	
 	}
-	
+
+	if (strcmp(name,"/") == 0) {
+		struct list *file_list = &thread_current()->file_list;
+		struct file_elem *fe = malloc(sizeof(struct file_elem));
+
+		if (!fe) {
+			dir_close(temp_dir);
+			frame_unpin((void*)name, strlen(name)+1);
+			return -1;
+		}
+
+		fe->dir_name = temp_dir;
+		fe->name = NULL;
+		int fd = fe->fd = thread_current()->fd_num++;
+		//printf("fd : %d\n", fd);
+		//strlcpy(fe->filename, name_2, strlen(name_2)+1);
+		list_push_back(file_list, &fe->elem);
+		frame_unpin((void*)name, strlen(name)+1);
+
+		return fd;
+	}
+
 	int count = 0;
 	char *save_ptr_1, *token_1;
-	for (token_1 = strtok_r(name, "/", &save_ptr_1); token_1 != NULL;
+	char *name_cpy = malloc(strlen(name)+1);
+	strlcpy(name_cpy, name, strlen(name)+1);
+	for (token_1 = strtok_r(name_cpy, "/", &save_ptr_1); token_1 != NULL;
 			token_1 = strtok_r(NULL, "/", &save_ptr_1)) {
 		count++;
 	}
@@ -492,8 +521,11 @@ int open(const char *name) {
 	int i = 0;
 	char *save_ptr_2, *token_2;
 	char name_2[14];
-	for (token_2 = strtok_r(name, "/", &save_ptr_2); token_2 != NULL; 
-				token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
+	char *name_cpy_2 = malloc(strlen(name)+1);
+	strlcpy(name_cpy_2, name, strlen(name)+1);
+	//printf("name : %s\n", name);
+	for (token_2 = strtok_r(name_cpy_2, "/", &save_ptr_2); token_2 != NULL; 
+			token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
 		struct inode *temp_inode;
 		if (i<count-1) {
 			dir_lookup(temp_dir, token_2, &temp_inode);
@@ -504,38 +536,38 @@ int open(const char *name) {
 			}
 
 			temp_dir = dir_open(temp_inode);
-			//printf("token : %s\n", token_2);
 			i++;
 		} else {
-            /* name_2 : file name or directory name */
+			/* name_2 : file name or directory name */
 			strlcpy(name_2,token_2,strlen(token_2)+1);
-            //printf("name_2 : %s\n", name_2);
+			//printf("name_2 : %s\n", name_2);
 		}
-	//printf("token : %s\n", token_2);
+		//printf("token : %s\n", token_2);
 	}
 	//printf("token : %s\n", token_2);
-	if (count <= 1) {
-        /* we just find file in current directory */
-		strlcpy(name_2, name, strlen(name)+1);
+	//if (count <= 1) {
+	/* we just find file in current directory */
+	//	strlcpy(name_2, name, strlen(name)+1);
+	//}
+	//printf("name_2 : %s\n", name_2);
+	struct inode *temp_inode;
+	dir_lookup(temp_dir, name_2, &temp_inode);
+	dir_close(temp_dir);
+	if (!temp_inode) {
+		//printf("temp_inode : NULL\n");
+		//dir_close(temp_dir);
+		return -1;
 	}
-    //printf("name_2 : %s\n", name_2);
-    struct inode *temp_inode;
-    dir_lookup(temp_dir, name_2, &temp_inode);
-    dir_close(temp_dir);
-    if (!temp_inode) {
-        //printf("temp_inode : NULL\n");
-        //dir_close(temp_dir);
-        return -1;
-    }
-
+	
+	
 
 	int fd;
 	if (!temp_inode->data.is_dir) {
-        /* Open a file */
+		/* Open a file */
 		//frame_pin((void*)name, strlen(name)+1);
 		lock_acquire(&filesys_lock);
 		struct file* openfile = file_open(temp_inode);
-        //printf("opened a file : %x\n", openfile);
+		//printf("opened a file : %x\n", openfile);
 		lock_release(&filesys_lock);
 		if (!openfile) {
 			frame_unpin((void*)name, strlen(name)+1);
@@ -558,15 +590,12 @@ int open(const char *name) {
 		strlcpy(fe->filename, name_2, strlen(name_2)+1);
 		list_push_back(file_list, &fe->elem);
 		frame_unpin((void*)name, strlen(name)+1);
-        //printf("fd : %d\n", fd);
+		//printf("fd : %d\n", fd);
 		return fd;
 
 
-	} 
-
-    else 
-    {
-        /* Open a directory */
+	} else {
+		/* Open a directory */
 		//dir_close(temp_dir);
 		temp_dir = dir_open(temp_inode);
 		if (!temp_dir) {
@@ -582,18 +611,17 @@ int open(const char *name) {
 			frame_unpin((void*)name, strlen(name)+1);
 			return -1;
 		}
-		
+
 		fe->dir_name = temp_dir;
 		fe->name = NULL;
 		fd = fe->fd = thread_current()->fd_num++;
+		//printf("fd : %d\n", fd);
 		//strlcpy(fe->filename, name_2, strlen(name_2)+1);
 		list_push_back(file_list, &fe->elem);
 		frame_unpin((void*)name, strlen(name)+1);
 
 		return fd;
-
 	}
-	
 }
 
 struct file *find_file_desc(int fd) {
@@ -632,7 +660,8 @@ void close(int fd) {
         if (fe->fd == fd) {
 			if (!fe->dir_name) {
             	struct file *file_to_close = find_file_desc(fd);
-
+				//printf("fd : %d\n",fd);
+				//printf("filename : %s\n", fe->filename);
             	lock_acquire(&filesys_lock);
             	file_close(file_to_close);
             	lock_release(&filesys_lock);
@@ -972,13 +1001,22 @@ int mkdir (const char *dir) {
 	} else {
 		temp_dir = dir_reopen(thread_current()->current_dir);	
 	} 
+
+	//int j;
+	//for (j = 0; j<count; j++) {
+		
+		//printf("dir : %s\n", dir);
 	
 	int count = 0;
+	char *dir_cpy = malloc(strlen(dir)+1);
+	strlcpy(dir_cpy, dir, strlen(dir)+1);
 	char *save_ptr_1, *token_1;
-	for (token_1 = strtok_r(dir, "/", &save_ptr_1); token_1 != NULL;
+	for (token_1 = strtok_r(dir_cpy, "/", &save_ptr_1); token_1 != NULL;
 			token_1 = strtok_r(NULL, "/", &save_ptr_1)) {
 		count++;
 	}
+
+	//printf("dir : %s\n", dir);
 
 	//printf("count : %d\n", count);
     int i = 0;
@@ -989,6 +1027,7 @@ int mkdir (const char *dir) {
 		if (i<count-1) {
 			dir_lookup(temp_dir, token_2, &temp_inode);
 			if (!temp_inode) {
+				//printf("1\n");
 				return false;
 			}
 			dir_close(temp_dir);
@@ -999,9 +1038,12 @@ int mkdir (const char *dir) {
             //printf("name is %s\n", name);
 		}
 	}
-    if (count <= 1) {
+    /*if (count <= 1) {
         strlcpy(name, dir, strlen(dir)+1);
-    }
+		printf("name : %s\n", name);
+    }*/
+
+	//printf("name : %s\n",name);	
 
 	disk_sector_t temp_inode_s = 0;
 
@@ -1014,7 +1056,8 @@ int mkdir (const char *dir) {
         free_map_release(temp_inode_s, 1);
     }
     //printf("directory %s added to parent dir %x\n", name, temp_dir);
-    dir_close(temp_dir);
+    //thread_current()->current_dir = dir_reopen(temp_dir);
+	dir_close(temp_dir);
 
 	return success;
 
