@@ -10,6 +10,7 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
+#include "threads/thread.h"
 
 /* List files in the root directory. */
 void
@@ -62,7 +63,7 @@ fsutil_rm (char **argv)
   const char *file_name = argv[1];
   
   printf ("Deleting '%s'...\n", file_name);
-  if (!filesys_remove (file_name))
+  if (!filesys_remove (file_name, thread_current()->current_dir))
     PANIC ("%s: delete failed\n", file_name);
 }
 
@@ -110,7 +111,7 @@ fsutil_put (char **argv)
     PANIC ("%s: invalid file size %d", file_name, size);
   
   /* Create destination file. */
-  if (!filesys_create (file_name, size))
+  if (!filesys_create (file_name, size, thread_current()->current_dir))
     PANIC ("%s: create failed", file_name);
   dst = filesys_open (file_name);
   if (dst == NULL)

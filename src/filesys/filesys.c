@@ -62,10 +62,15 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size) 
+filesys_create (const char *name, off_t initial_size, struct dir *file_dir) 
 {
   disk_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
+  struct dir *dir;
+  if (file_dir == NULL) {
+    dir = dir_open_root ();
+  } else {
+      dir = dir_reopen(file_dir);
+  }
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, false)
@@ -120,9 +125,14 @@ filesys_open_dir (const char *name, struct dir *t_dir)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *name, struct dir *file_dir) 
 {
-  struct dir *dir = dir_open_root ();
+  struct dir *dir;
+  if (file_dir == NULL)
+      dir = dir_open_root ();
+  else {
+      dir = dir_reopen(file_dir);
+  }
   bool success = dir != NULL && dir_remove (dir, name);
   dir_close (dir); 
 
