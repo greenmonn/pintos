@@ -149,7 +149,10 @@ do_format (void)
     PANIC ("root directory creation failed");
   struct dir *root_dir = dir_open_root();
   root_dir->inode->data.parent = ROOT_DIR_SECTOR;
-  disk_write(filesys_disk, ROOT_DIR_SECTOR, &(root_dir->inode->data));
+  struct inode_disk temp_disk;
+  inode_data_to_disk(&temp_disk, &root_dir->inode->data);
+  //disk_write(filesys_disk, ROOT_DIR_SECTOR, 
+  disk_write(filesys_disk, ROOT_DIR_SECTOR, &temp_disk);
   //dir_add_relative(root_dir, ".", ROOT_DIR_SECTOR);
   //dir_add_relative(root_dir, "..", ROOT_DIR_SECTOR);
   free_map_close ();

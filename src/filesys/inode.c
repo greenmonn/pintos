@@ -34,11 +34,39 @@
 
 void inode_data_to_disk(struct inode_disk *dst, struct inode_data *src) {
     memset(dst, 0, sizeof (struct inode_disk));
-    memcpy(dst, src, sizeof (struct inode_data));
+    dst->length = src->length;
+    dst->magic = src->magic;
+    int i;
+    for (i=0; i<9; i++) {
+        dst->direct_idx[i] = src->direct_idx[i];
+
+    }
+    for (i=0; i<4; i++) {
+        dst->indirect_idx[i] = src->indirect_idx[i];
+    }
+    dst->double_indirect_idx = src->double_indirect_idx;
+    dst->is_dir = src->is_dir;
+    dst->parent = src->parent;
+
+    //memcpy(dst, src, sizeof (struct inode_data));
 }
 
 void inode_disk_to_data(struct inode_data *dst, struct inode_disk *src) {
-    memcpy(dst, src, sizeof (struct inode_data));
+    dst->length = src->length;
+    dst->magic = src->magic;
+    int i;
+    for (i=0; i<9; i++) {
+        dst->direct_idx[i] = src->direct_idx[i];
+
+    }
+    for (i=0; i<4; i++) {
+        dst->indirect_idx[i] = src->indirect_idx[i];
+    }
+    dst->double_indirect_idx = src->double_indirect_idx;
+    dst->is_dir = src->is_dir;
+    dst->parent = src->parent;
+
+    //memcpy(dst, src, sizeof (struct inode_data));
 }
 
 

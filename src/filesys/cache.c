@@ -29,7 +29,7 @@ void cache_init ()
 {
     hash_init(&buffer_cache, cache_hash, cache_less, NULL);
     lock_init(&cache_lock);
-    thread_create("write-back", PRI_DEFAULT, write_back_thread, NULL);
+    //thread_create("write-back", PRI_DEFAULT, write_back_thread, NULL);
 }
 
 struct cache_entry * cache_lookup(disk_sector_t sector_no)

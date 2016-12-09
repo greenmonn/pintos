@@ -566,9 +566,9 @@ int open(const char *name) {
         //printf("token : %s\n", token_2);
 		struct inode *temp_inode;
 		if (i<count-1) {
-            printf("lookup\n");
+            //printf("lookup\n");
             dir_lookup(temp_dir, token_2, &temp_inode);
-            printf("lookup finish\n");
+            //printf("lookup finish\n");
             if (strcmp(token_2, ".") == 0) {
                 temp_inode = inode_open(temp_dir->inode->sector);
             } else if (strcmp(token_2, "..") == 0) {
