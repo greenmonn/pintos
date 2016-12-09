@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/cache.h"
 
 /* A directory. */
 //struct dir 
@@ -99,16 +100,20 @@ lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
+ // printf("find %s\n", name);
+
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-       ofs += sizeof e) 
+       ofs += sizeof e) {      
     if (e.in_use && !strcmp (name, e.name)) 
       {
+         // printf("directory lookup match %s %s\n", e.name);
         if (ep != NULL)
           *ep = e;
         if (ofsp != NULL)
           *ofsp = ofs;
         return true;
       }
+  }
   return false;
 }
 
@@ -125,8 +130,12 @@ dir_lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  if (lookup (dir, name, &e, NULL))
+  //printf("lookup directory %d to find %s\n", dir->inode->sector, name);
+
+  if (lookup (dir, name, &e, NULL)) {
+      //printf("lookup ok\n");
     *inode = inode_open (e.inode_sector);
+  }
   else
     *inode = NULL;
 
@@ -139,8 +148,9 @@ dir_lookup (const struct dir *dir, const char *name,
    Returns true if successful, false on failure.
    Fails if NAME is invalid (i.e. too long) or a disk or memory
    error occurs. */
+
 bool
-dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector) 
+dir_add_relative (struct dir *dir, const char *name, disk_sector_t inode_sector) 
 {
   struct dir_entry e;
   off_t ofs;
@@ -179,6 +189,47 @@ dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector)
   return success;
 }
 
+bool
+dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector) 
+{
+  struct dir_entry e;
+  off_t ofs;
+  bool success = false;
+  
+  ASSERT (dir != NULL);
+  ASSERT (name != NULL);
+
+  /* Check NAME for validity. */
+  if (*name == '\0' || strlen (name) > NAME_MAX)
+    return false;
+
+  /* Check that NAME is not in use. */
+  if (lookup (dir, name, NULL, NULL))
+    goto done;
+
+  /* Set OFS to offset of free slot.
+     If there are no free slots, then it will be set to the
+     current end-of-file.
+     
+     inode_read_at() will only return a short read at end of file.
+     Otherwise, we'd need to verify that we didn't get a short
+     read due to something intermittent such as low memory. */
+  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+       ofs += sizeof e) 
+    if (!e.in_use)
+      break;
+
+  /* Write slot. */
+  e.in_use = true;
+  strlcpy (e.name, name, sizeof e.name);
+  e.inode_sector = inode_sector;
+  //printf("add %s[%d] to directory %d\n", e.name, inode_sector, dir->inode->sector);
+  success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+
+done:
+  return success;
+}
+
 /* Removes any entry for NAME in DIR.
    Returns true if successful, false on failure,
    which occurs only if there is no file with the given NAME. */
@@ -206,9 +257,11 @@ dir_remove (struct dir *dir, const char *name)
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 
     goto done;
+ // printf("e is not in use\n");
 
   /* Remove inode. */
   inode_remove (inode);
+  //printf("inode removed\n");
   success = true;
 
  done:
@@ -224,8 +277,10 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
 
+  //printf("dir_readdir\n");
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
+        //printf("%s\n", e.name);
       dir->pos += sizeof e;
       if (e.in_use)
         {

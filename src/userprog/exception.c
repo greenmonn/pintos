@@ -260,6 +260,7 @@ page_fault (struct intr_frame *f)
 
       if (!success) {
           //printf("We exit on page_fault : fault_addr %x\n", fault_addr);
+
           exit(-1);
       }
       

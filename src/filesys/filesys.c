@@ -147,6 +147,11 @@ do_format (void)
   free_map_create ();
   if (!dir_create (ROOT_DIR_SECTOR, 16))
     PANIC ("root directory creation failed");
+  struct dir *root_dir = dir_open_root();
+  root_dir->inode->data.parent = ROOT_DIR_SECTOR;
+  disk_write(filesys_disk, ROOT_DIR_SECTOR, &(root_dir->inode->data));
+  //dir_add_relative(root_dir, ".", ROOT_DIR_SECTOR);
+  //dir_add_relative(root_dir, "..", ROOT_DIR_SECTOR);
   free_map_close ();
   printf ("done.\n");
 }

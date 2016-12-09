@@ -11,6 +11,7 @@
 #include "filesys/directory.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
+#include "filesys/filesys.h"
 
 #define ARG_MAX 3
 #define STACK_SIZE 262144
@@ -331,7 +332,9 @@ int create(const char *name, unsigned size) {
     if (name[0] == '/') {
         temp_dir = dir_open_root();
     } else {
-        temp_dir = dir_reopen(thread_current()->current_dir);	
+        temp_dir = dir_reopen(thread_current()->current_dir);
+        if (temp_dir->inode->removed == true)
+            return false;
     } 
 
     int count = 0;
@@ -359,6 +362,11 @@ int create(const char *name, unsigned size) {
         struct inode *temp_inode;
         if (i<count-1) {
             dir_lookup(temp_dir, token_2, &temp_inode);
+            if (strcmp(token_2, ".") == 0) {
+                temp_inode = inode_open(temp_dir->inode->sector);
+            } else if (strcmp(token_2, "..") == 0) {
+                temp_inode = inode_open(temp_dir->inode->data.parent);
+            }
             if (!temp_inode) {
                 dir_close(temp_dir);
                 return false;
@@ -368,7 +376,7 @@ int create(const char *name, unsigned size) {
             i++;
         } else {
             strlcpy(name_2, token_2, strlen(token_2)+1);
-            //printf("name is %s\n", name_2);
+            //printf("created file name is %s\n", name_2);
         }
     }
     /*if (count <= 1) {
@@ -376,12 +384,7 @@ int create(const char *name, unsigned size) {
     }*/
     free(new_name2);
 
-    //disk_sector_t temp_inode_s = 0;
-    //free_map_allocate(1,&temp_inode_s);
-    //dir_create(temp_inode_s, 16);
-    //dir_add(temp_dir, name, temp_inode_s);
-    //printf("directory %s added to parent dir %x\n", name, temp_dir);
-
+    //printf("create file in directory %d\n", temp_dir->inode->sector);
 
     lock_acquire(&filesys_lock);
     int ret = filesys_create(name_2, size, temp_dir);
@@ -422,10 +425,17 @@ int remove(const char *file) {
 	for (token_2 = strtok_r(file, "/", &save_ptr_2); token_2 != NULL; 
 				token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
 		struct inode *temp_inode;
-		if (i<count-1) {
-			dir_lookup(temp_dir, token_2, &temp_inode);
-			if (!temp_inode) {
-				return -1;
+        if (i<count-1) {
+            dir_lookup(temp_dir, token_2, &temp_inode);
+            if (strcmp(token_2, ".") == 0) {
+                temp_inode = inode_open(temp_dir->inode->sector);
+            } else if (strcmp(token_2, "..") == 0) {
+                temp_inode = inode_open(temp_dir->inode->data.parent);
+            }
+
+            if (!temp_inode) {
+                //printf("directory lookup failed\n");
+				return false;
 			}
 			dir_close(temp_dir);
 			temp_dir = dir_open(temp_inode);
@@ -435,11 +445,35 @@ int remove(const char *file) {
 		}
 	}
 
-	struct inode *temp_inode;
-	dir_lookup(temp_dir, name, &temp_inode);
+
+    //printf("name : %s\n", name);
+
+    //printf("remove directory's parent %d\n", temp_dir->inode->sector);
+    struct inode *temp_inode;
+    dir_lookup(temp_dir, name, &temp_inode);
+    /*if (strcmp(name, ".") == 0) {
+        temp_inode = inode_open(temp_dir->inode->sector);
+    } else if (strcmp(name, "..") == 0) {
+        temp_inode = inode_open(temp_dir->inode->data.parent);
+    }*/
+
 	if (!temp_inode) {
-		return -1;
+        //printf("lookup failed\n");
+        
+        struct dir_entry e;
+        size_t ofs;
+
+        for (ofs = 0; inode_read_at(temp_dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e) {
+           // if (e.in_use) {
+                //printf("entry %s - %d\n", e.name, e.inode_sector);
+                //printf("strcmp? %d\n", strcmp(e.name, name));
+           // }
+        }
+		return false;
 	}
+
+
+    //printf("remove directory is %d\n", temp_inode->sector);
 
     int ret;
     //frame_pin((void*)file, strlen(file)+1);
@@ -450,20 +484,21 @@ int remove(const char *file) {
         lock_release(&filesys_lock);
     } else {
         /* remove directory */
-
         //1. Check whether it is empty
         struct dir_entry e;
-        int pos = 2*(sizeof e);
+        int pos = 0;
         while (inode_read_at(temp_inode, &e, sizeof e, pos) == sizeof e) {
             pos += sizeof e;
+            //printf("entry name : %s\n", e.name);
             if (e.in_use)
             {
-                return -1;
+                return false;
             }
         }
+
+        //1-2. Check whether it is parent
         //2. if empty, successfully remove
         ret = dir_remove(temp_dir, name);
-        //dir_close(temp_dir);
     }
     dir_close(temp_dir);
     frame_unpin((void*)file, strlen(file)+1);
@@ -485,6 +520,7 @@ int open(const char *name) {
 	} else {
 		temp_dir = dir_reopen(thread_current()->current_dir);	
 	}
+
 
 	if (strcmp(name,"/") == 0) {
 		struct list *file_list = &thread_current()->file_list;
@@ -524,13 +560,22 @@ int open(const char *name) {
 	char *name_cpy_2 = malloc(strlen(name)+1);
 	strlcpy(name_cpy_2, name, strlen(name)+1);
 	//printf("name : %s\n", name);
+    //printf("parse : %s\n", name_cpy_2);
 	for (token_2 = strtok_r(name_cpy_2, "/", &save_ptr_2); token_2 != NULL; 
 			token_2 = strtok_r (NULL, "/", &save_ptr_2)) {
+        //printf("token : %s\n", token_2);
 		struct inode *temp_inode;
 		if (i<count-1) {
-			dir_lookup(temp_dir, token_2, &temp_inode);
+            printf("lookup\n");
+            dir_lookup(temp_dir, token_2, &temp_inode);
+            printf("lookup finish\n");
+            if (strcmp(token_2, ".") == 0) {
+                temp_inode = inode_open(temp_dir->inode->sector);
+            } else if (strcmp(token_2, "..") == 0) {
+                temp_inode = inode_open(temp_dir->inode->data.parent);
+            }
 
-			dir_close(temp_dir);
+            dir_close(temp_dir);
 			if (!temp_inode) {
 				return -1;
 			}
@@ -550,19 +595,34 @@ int open(const char *name) {
 	//	strlcpy(name_2, name, strlen(name)+1);
 	//}
 	//printf("name_2 : %s\n", name_2);
-	struct inode *temp_inode;
+	struct inode *temp_inode = NULL;
 	dir_lookup(temp_dir, name_2, &temp_inode);
-	dir_close(temp_dir);
-	if (!temp_inode) {
+    if (strcmp(name_2, ".") == 0) {
+        temp_inode = inode_open(temp_dir->inode->sector);
+    } else if (strcmp(name_2, "..") == 0) {
+        temp_inode = inode_open(temp_dir->inode->data.parent);
+    }
+    /*
+    if(temp_inode != NULL)
+        printf("inode is on sector %d\n", temp_inode->sector);
+    else
+        printf("inode is NULL\n");
+        */
+
+	if (!temp_inode || temp_inode->removed || temp_dir->inode->removed) {
 		//printf("temp_inode : NULL\n");
-		//dir_close(temp_dir);
+		dir_close(temp_dir);
 		return -1;
 	}
+    //printf("open finish\n");
+
+	dir_close(temp_dir);
 	
 	
 
 	int fd;
 	if (!temp_inode->data.is_dir) {
+        //printf("file?\n");
 		/* Open a file */
 		//frame_pin((void*)name, strlen(name)+1);
 		lock_acquire(&filesys_lock);
@@ -598,6 +658,8 @@ int open(const char *name) {
 		/* Open a directory */
 		//dir_close(temp_dir);
 		temp_dir = dir_open(temp_inode);
+        //printf("temp_dir : %x\n", temp_dir);
+       
 		if (!temp_dir) {
 			frame_unpin((void*)name, strlen(name)+1);
 			return -1;
@@ -979,8 +1041,15 @@ int chdir(const char *dir) {
         //printf("temp_dir %x, token : %s\n", temp_dir,token);
         struct inode *temp_inode;
         dir_lookup(temp_dir, token, &temp_inode);
+        if (strcmp(token, ".") == 0) {
+            temp_inode = inode_open(temp_dir->inode->sector);
+        } else if (strcmp(token, "..") == 0) {
+            temp_inode = inode_open(temp_dir->inode->data.parent);
+        }
+
         if (!temp_inode) {
             //printf("temp_inode is NULL\n");
+            dir_close(temp_dir);
             return false;
         }
         dir_close(temp_dir);
@@ -988,6 +1057,7 @@ int chdir(const char *dir) {
     }
     dir_close(thread_current()->current_dir);
     thread_current()->current_dir = dir_reopen(temp_dir);
+    //printf("current dir is now %d\n", temp_dir->inode->sector);
     dir_close(temp_dir);
 
     return true;
@@ -1016,7 +1086,7 @@ int mkdir (const char *dir) {
 		count++;
 	}
 
-	//printf("dir : %s\n", dir);
+	//printf("mkdir : %s\n", dir);
 
 	//printf("count : %d\n", count);
     int i = 0;
@@ -1026,6 +1096,12 @@ int mkdir (const char *dir) {
 		struct inode *temp_inode;
 		if (i<count-1) {
 			dir_lookup(temp_dir, token_2, &temp_inode);
+            if (strcmp(token_2, ".") == 0) {
+                temp_inode = inode_open(temp_dir->inode->sector);
+            } else if (strcmp(token_2, "..") == 0) {
+                temp_inode = inode_open(temp_dir->inode->data.parent);
+            }
+
 			if (!temp_inode) {
 				//printf("1\n");
 				return false;
@@ -1051,10 +1127,27 @@ int mkdir (const char *dir) {
             && free_map_allocate(1,&temp_inode_s)
             && dir_create(temp_inode_s, 16)
             && dir_add(temp_dir, name, temp_inode_s) );
+   // printf("parent : %d\n", temp_dir->inode->sector);
+   // printf("created child : %d\n", temp_inode_s);
 
     if (!success && temp_inode_s != 0) {
         free_map_release(temp_inode_s, 1);
     }
+
+    /* add relative path to New directory */
+    struct inode *created_inode = inode_open(temp_inode_s);
+    created_inode->data.parent = temp_dir->inode->sector;
+
+    struct inode_disk *disk_inode = malloc(sizeof (struct inode_disk));
+
+    inode_data_to_disk(disk_inode, &created_inode->data);
+    disk_write(filesys_disk, temp_inode_s, disk_inode);
+    inode_close(created_inode);
+    free(disk_inode);
+
+    //dir_add_relative(created_dir, ".", temp_inode_s);
+    //dir_add_relative(created_dir, "..", temp_dir->inode->sector);
+    //dir_close(created_dir);
     //printf("directory %s added to parent dir %x\n", name, temp_dir);
     //thread_current()->current_dir = dir_reopen(temp_dir);
 	dir_close(temp_dir);
@@ -1064,8 +1157,12 @@ int mkdir (const char *dir) {
 }
 
 int readdir (int fd, char *name) {
+    //printf("readdir\n");
 	struct dir *dir_to_read = find_dir_desc(fd);
-	return dir_readdir (dir_to_read, name);
+    //printf("dir %x\n", dir_to_read);
+    int ret = dir_readdir (dir_to_read, name);
+    //printf("%d\n", ret);
+    return ret;
 }
 
 int isdir(int fd) {

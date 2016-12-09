@@ -10,13 +10,29 @@ struct inode_disk
 {
 	off_t length;
 	unsigned magic;
-	uint32_t unused[111];
-	//bool unused_bool[3];
+
 	disk_sector_t direct_idx[9];
 	disk_sector_t indirect_idx[4];
 	disk_sector_t double_indirect_idx;
+    
+    /* used if directory */
 	bool is_dir;
+    disk_sector_t parent;
+
+	uint32_t unused[110];
 };
+
+struct inode_data
+{
+    off_t length;
+    unsigned magic;
+    disk_sector_t direct_idx[9];
+    disk_sector_t indirect_idx[4];
+    disk_sector_t double_indirect_idx;
+    bool is_dir;
+    disk_sector_t parent;
+};
+
 
 struct inode
 {
@@ -25,7 +41,7 @@ struct inode
 	int open_cnt;
 	bool removed;
 	int deny_write_cnt;
-	struct inode_disk data;
+	struct inode_data data;
 	bool is_dir;
 };
 

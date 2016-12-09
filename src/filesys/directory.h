@@ -15,6 +15,7 @@ struct dir
 {
 	struct inode *inode;
 	int32_t pos;
+    disk_sector_t parent;
 };
 
 struct dir_entry

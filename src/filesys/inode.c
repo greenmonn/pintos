@@ -30,6 +30,17 @@
 //    disk_sector_t double_indirect_idx;
 //	bool is_dir;
 //  };
+//
+
+void inode_data_to_disk(struct inode_disk *dst, struct inode_data *src) {
+    memset(dst, 0, sizeof (struct inode_disk));
+    memcpy(dst, src, sizeof (struct inode_data));
+}
+
+void inode_disk_to_data(struct inode_data *dst, struct inode_disk *src) {
+    memcpy(dst, src, sizeof (struct inode_data));
+}
+
 
 struct indirect_block
 {
@@ -110,7 +121,9 @@ bool alloc_sectors(struct inode_disk *disk_inode, disk_sector_t sector, size_t s
             free_map_allocate(1, &disk_inode->direct_idx[i]);
             disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
         }
+
         disk_write(filesys_disk, sector, disk_inode);
+
         success = true;
     }
 
@@ -148,6 +161,7 @@ bool alloc_sectors(struct inode_disk *disk_inode, disk_sector_t sector, size_t s
               }
               disk_write(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
               disk_write(filesys_disk, sector, disk_inode);
+
               success = true;
           }
           else {
@@ -205,11 +219,12 @@ bool alloc_sectors(struct inode_disk *disk_inode, disk_sector_t sector, size_t s
               /* ALL INDEX ALLOCATED */
               disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
               disk_write(filesys_disk, sector, disk_inode);
+
               success = true;
           }
           else {
               disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
-              disk_write(filesys_disk, sector, disk_inode);
+        disk_write(filesys_disk, sector, disk_inode);
               success = true;
           }
       } //end of 'else'
@@ -218,13 +233,14 @@ bool alloc_sectors(struct inode_disk *disk_inode, disk_sector_t sector, size_t s
 
 bool alloc_sectors_grow(struct inode *inode, disk_sector_t sector, size_t sectors, size_t newlength) {
     bool success = false;
-    struct inode_disk *disk_inode = &inode->data;
+    struct inode_data *disk_inode = &inode->data;
     size_t i, j;
     static char zeros[DISK_SECTOR_SIZE];
 
     //struct inode_disk previous_data;
     //memcpy(&previous_data, disk_inode, sizeof(struct inode_disk));
 
+    //printf("%d\n", disk_inode->length);
     size_t pos = byte_to_sector(disk_inode->length);
     inode->data.length = newlength;
 
@@ -237,7 +253,10 @@ bool alloc_sectors_grow(struct inode *inode, disk_sector_t sector, size_t sector
             //printf("alloc direct_idx[%d] = %d\n", i, disk_inode->direct_idx[i]);
             disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
         }
-        disk_write(filesys_disk, sector, disk_inode);
+        struct inode_disk *temp_sector = malloc(sizeof (struct inode_disk));
+        inode_data_to_disk(temp_sector, disk_inode);
+        disk_write(filesys_disk, sector, temp_sector);
+        free(temp_sector);
         success = true;
     }
 
@@ -320,21 +339,27 @@ bool alloc_sectors_grow(struct inode *inode, disk_sector_t sector, size_t sector
                   /* FILLED ZERO IN ACTUAL DATA SECTOR */
               }
               disk_write(filesys_disk, disk_inode->indirect_idx[last_indirect_index], &single);
-              disk_write(filesys_disk, sector, disk_inode);
+              struct inode_disk *temp_sector = malloc(sizeof (struct inode_disk));
+              inode_data_to_disk(temp_sector, disk_inode);
+              disk_write(filesys_disk, sector, temp_sector);
+              free(temp_sector);
               success = true;
           }
           else {
-              disk_write(filesys_disk, sector, disk_inode);
+              struct inode_disk *temp_sector = malloc(sizeof (struct inode_disk));
+              inode_data_to_disk(temp_sector, disk_inode);
+              disk_write(filesys_disk, sector, temp_sector);
+              free(temp_sector);
               success = true;
           }
-      }
+    }
 
-      /* CASE 3 */
-      else {
-          //Doubly-indirect block
-          //1. Fill all of the previous index first!
-          if (pos < DIRECT_INDEX_SIZE) {
-              for (i = pos ; i < DIRECT_INDEX_SIZE ; i++ ) {
+    /* CASE 3 */
+    else {
+        //Doubly-indirect block
+        //1. Fill all of the previous index first!
+        if (pos < DIRECT_INDEX_SIZE) {
+            for (i = pos ; i < DIRECT_INDEX_SIZE ; i++ ) {
                   free_map_allocate(1, &disk_inode->direct_idx[i]);
                   disk_write(filesys_disk, disk_inode->direct_idx[i], zeros);
                   /* FILLED ZERO IN ACTUAL DATA SECTOR */
@@ -438,16 +463,22 @@ bool alloc_sectors_grow(struct inode *inode, disk_sector_t sector, size_t sector
               disk_write(filesys_disk, single.entry[first_level_index], &doubly);
               /* ALL INDEX ALLOCATED */
               disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
-              disk_write(filesys_disk, sector, disk_inode);
+              struct inode_disk *temp_sector = malloc(sizeof (struct inode_disk));
+              inode_data_to_disk(temp_sector, disk_inode);
+              disk_write(filesys_disk, sector, temp_sector);
+              free(temp_sector);
               success = true;
           }
           else {
               disk_write(filesys_disk, disk_inode->double_indirect_idx, &single);
-              disk_write(filesys_disk, sector, disk_inode);
+              struct inode_disk *temp_sector = malloc(sizeof (struct inode_disk));
+              inode_data_to_disk(temp_sector, disk_inode);
+              disk_write(filesys_disk, sector, temp_sector);
+              free(temp_sector);
               success = true;
           }
-      } //end of 'else'
-      return success;
+    } //end of 'else'
+    return success;
 }
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
@@ -514,8 +545,10 @@ inode_open (disk_sector_t sector)
 
   /* Allocate memory. */
   inode = malloc (sizeof *inode);
-  if (inode == NULL)
+  if (inode == NULL) {
+      //printf("memory allocation failed\n");
     return NULL;
+  }
 
   /* Initialize. */
   list_push_front (&open_inodes, &inode->elem);
@@ -523,8 +556,15 @@ inode_open (disk_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-  disk_read (filesys_disk, inode->sector, &inode->data);
+  struct inode_disk temp_disk;
+  //printf("copy\n");
+  disk_read (filesys_disk, inode->sector, &temp_disk);
+  inode_disk_to_data(&inode->data, &temp_disk);
+  //printf("copy end\n");
+  //printf("inode_open\n");
+  //printf("data copied well? %d\n", inode->data.length);
   return inode;
+
 }
 
 /* Reopens and returns INODE. */
@@ -562,7 +602,7 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
      if (inode->removed) 
         {
-            struct inode_disk *disk_inode = &inode->data;
+            struct inode_data *disk_inode = &inode->data;
             int length = inode->data.length;
             int sectors = bytes_to_sectors (length);
             int i, j;
@@ -660,6 +700,7 @@ inode_remove (struct inode *inode)
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
 {
+    //printf("inode_read_at\n");
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
 
@@ -667,7 +708,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
     {
       /* Disk sector to read, starting byte offset within sector. */
       disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset);
-      //printf("sector_idx : %x\n", sector_idx);
+      //printf("sector_idx : %d\n", sector_idx);
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -737,7 +778,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
       if (inode_length(inode) < offset + chunk_size) {
           inode->data.length = offset + chunk_size;
-          disk_write(filesys_disk, inode->sector, &inode->data);
+          struct inode_disk temp_disk;
+          inode_data_to_disk(&temp_disk, &inode->data);
+          disk_write(filesys_disk, inode->sector, &temp_disk);
       }
 
 
