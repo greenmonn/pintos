@@ -9,6 +9,7 @@
 #include "vm/frame.h"
 #include "threads/pte.h"
 #include "filesys/directory.h"
+#include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/filesys.h"
@@ -1159,18 +1160,22 @@ int mkdir (const char *dir) {
 int readdir (int fd, char *name) {
     //printf("readdir\n");
 	struct dir *dir_to_read = find_dir_desc(fd);
-    //printf("dir %x\n", dir_to_read);
+	//if (!dir_to_read) return 0;
     int ret = dir_readdir (dir_to_read, name);
-    //printf("%d\n", ret);
     return ret;
 }
 
 int isdir(int fd) {
 	struct dir *dir= find_dir_desc(fd);
+	if (!dir) return 0;
 	return dir->inode->is_dir;
 }
 
 int inumber (int fd) {
 	struct dir *dir = find_dir_desc(fd);
+	if (!dir) {
+		struct file *file = find_file_desc(fd);
+		return file->inode->sector;
+	}
 	return dir->inode->sector;
 }
