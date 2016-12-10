@@ -387,11 +387,11 @@ int create(const char *name, unsigned size) {
 
     //printf("create file in directory %d\n", temp_dir->inode->sector);
 
-    lock_acquire(&filesys_lock);
+    //lock_acquire(&filesys_lock);
     int ret = filesys_create(name_2, size, temp_dir);
 	//printf("filename : %s\n", name_2);
     dir_close(temp_dir);
-    lock_release(&filesys_lock);
+    //lock_release(&filesys_lock);
     frame_unpin((void*)name, strlen(name)+1);
     return ret;
 }
@@ -470,9 +470,9 @@ int remove(const char *file) {
     //frame_pin((void*)file, strlen(file)+1);
     if (!temp_inode->data.is_dir) {
         /* remove file */
-        lock_acquire(&filesys_lock);
+        //lock_acquire(&filesys_lock);
         ret = filesys_remove(name, temp_dir);
-        lock_release(&filesys_lock);
+        //lock_release(&filesys_lock);
 
     } else {
         /* remove directory */
@@ -621,10 +621,10 @@ int open(const char *name) {
         //printf("file?\n");
 		/* Open a file */
 		//frame_pin((void*)name, strlen(name)+1);
-		lock_acquire(&filesys_lock);
+		//lock_acquire(&filesys_lock);
 		struct file* openfile = file_open(temp_inode);
 		//printf("opened a file : %x\n", openfile);
-		lock_release(&filesys_lock);
+		//lock_release(&filesys_lock);
 		if (!openfile) {
 			frame_unpin((void*)name, strlen(name)+1);
 			return -1;
@@ -634,9 +634,9 @@ int open(const char *name) {
 		struct file_elem *fe = malloc(sizeof(struct file_elem));
 
 		if (!fe) {
-			lock_acquire(&filesys_lock);
+			//lock_acquire(&filesys_lock);
 			file_close(openfile);
-			lock_release(&filesys_lock);
+			//lock_release(&filesys_lock);
 			frame_unpin((void*)name, strlen(name)+1);
 			return -1;
 		}
@@ -720,9 +720,9 @@ void close(int fd) {
             	struct file *file_to_close = find_file_desc(fd);
 				//printf("fd : %d\n",fd);
 				//printf("filename : %s\n", fe->filename);
-            	lock_acquire(&filesys_lock);
+            	//lock_acquire(&filesys_lock);
             	file_close(file_to_close);
-            	lock_release(&filesys_lock);
+            	//lock_release(&filesys_lock);
 			} else {
 				struct dir *dir_to_close = find_dir_desc(fd);
 				dir_close(dir_to_close);
@@ -795,7 +795,7 @@ int write(int fd, const void *buffer, unsigned size)
         return size;
     }
     
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
     //write to file
     struct file *file_to_write = find_file_desc(fd);
     //char* filename = find_file_name(fd);
@@ -808,13 +808,12 @@ int write(int fd, const void *buffer, unsigned size)
     */
 
     if (file_to_write) {
-        //lock_acquire(&filesys_lock);
         int ret = file_write(file_to_write, (const void*)buffer, size);
-        lock_release(&filesys_lock);
+        //lock_release(&filesys_lock);
 		frame_unpin(buffer, size);
 		return ret;
     }
-	lock_release(&filesys_lock);
+	//lock_release(&filesys_lock);
     frame_unpin(buffer, size);
     return -1;
 
@@ -841,56 +840,52 @@ int read(int fd, void *buffer, unsigned size)
 
     //read from file
     
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
 	struct file *file_to_read = find_file_desc(fd);
     //printf("found file desc\n");
     if(file_to_read) {
-    	//lock_acquire(&filesys_lock);
         int ret =  file_read(file_to_read, (void *)buffer, (int)size);
 		frame_unpin(buffer, size);
-        lock_release(&filesys_lock);
+        //lock_release(&filesys_lock);
 		return ret;
     }
-	lock_release(&filesys_lock);
+	//lock_release(&filesys_lock);
     frame_unpin(buffer, size);
     return -1;
 }
 
 int filesize(int fd) {
-	lock_acquire(&filesys_lock);
-    struct file *target = find_file_desc(fd);
 	//lock_acquire(&filesys_lock);
+    struct file *target = find_file_desc(fd);
     int ret = file_length(target);
-    lock_release(&filesys_lock);
+    //lock_release(&filesys_lock);
 	return ret;
 }
 
 void seek(int fd, unsigned position) {
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
     struct file *file_to_seek = find_file_desc(fd);
     if(!file_to_seek) {
-		lock_release(&filesys_lock);
+		//lock_release(&filesys_lock);
 		exit(-1);
 	}
 
-	//lock_acquire(&filesys_lock);
     file_seek(file_to_seek, position);
-	lock_release(&filesys_lock);
+	//lock_release(&filesys_lock);
 }
 
 int tell(int fd) {
 	//printf("wow\n");
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
     struct file *file_to_tell = find_file_desc(fd);
 
     if(!file_to_tell) {
-		lock_release(&filesys_lock);
+		//lock_release(&filesys_lock);
         exit(-1);
     }
 
-    //lock_acquire(&filesys_lock);
     int ret = file_tell(file_to_tell);
-    lock_release(&filesys_lock);
+    //lock_release(&filesys_lock);
     return ret;
 }
 
@@ -903,11 +898,11 @@ int mmap (int fd, void *addr) {
 	if (addr == NULL || addr == 0x0 || pg_ofs(addr) != 0 || !is_user_vaddr(addr))
         return -1;
 
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
 
 	struct file *file_to_mmap = find_file_desc(fd);
 	if (!file_to_mmap) {
-		lock_release(&filesys_lock);
+		//lock_release(&filesys_lock);
 		return -1;
 	}
 
@@ -915,11 +910,11 @@ int mmap (int fd, void *addr) {
 
 	uint32_t read_bytes = file_length(file_to_mmap);
 	if ( file_length(file_to_mmap) <= 0) {
-		lock_release(&filesys_lock);
+		//lock_release(&filesys_lock);
 		return -1;
 	}
 
-	lock_release(&filesys_lock);
+//	lock_release(&filesys_lock);
 
 	int32_t ofs = 0;
 	thread_current()->mapid++;
@@ -929,17 +924,14 @@ int mmap (int fd, void *addr) {
 	while (read_bytes > 0)
 	{
 		uint32_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-        //printf("mmap addr : %x\n", addr);
 		uint32_t page_zero_bytes = PGSIZE - page_read_bytes;
 		if (page_lookup(thread_current()->suppl_pages, addr)) {
-			//munmap(thread_current()->mapid);
             while(addr>first_addr) {
                 addr -=PGSIZE;
                 struct page *pg = page_lookup(thread_current()->suppl_pages, addr);
                 hash_delete(thread_current()->suppl_pages, &pg->elem);
 				free(pg);
             }
-			//printf("1\n");
 			return -1;
 
 		}
@@ -986,7 +978,7 @@ void munmap (int mapid) {
 	
 	uint32_t ofs = 0;
 
-	lock_acquire(&filesys_lock);
+	//lock_acquire(&filesys_lock);
 	int i;
 	for (i = 0; i<me->pg_count; i++)
     {
@@ -1016,7 +1008,7 @@ void munmap (int mapid) {
         addr += PGSIZE;
     }
     file_close(unmap_file);
-    lock_release(&filesys_lock);
+    //lock_release(&filesys_lock);
 	free(me);
 
 }

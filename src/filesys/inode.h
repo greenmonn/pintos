@@ -40,7 +40,12 @@ struct inode
 	struct list_elem elem;
 	disk_sector_t sector;
 	int open_cnt;
-	bool removed;
+
+    /* Reading Thread should wait for writing thread to finish up */
+    //struct semaphore sema;
+    //bool writing_cnt;
+	
+    bool removed;
 	int deny_write_cnt;
 	struct inode_data data;
 

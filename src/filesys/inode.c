@@ -106,10 +106,10 @@ byte_to_sector (off_t pos)
 }
 
 disk_sector_t
-byte_to_sector_indexed (struct inode *inode, off_t pos)
+byte_to_sector_indexed (struct inode *inode, off_t pos, int length)
 {
     ASSERT(inode != NULL);
-    if (pos < ROUND_UP(inode->data.length, DISK_SECTOR_SIZE)) {
+    if (pos < ROUND_UP(length, DISK_SECTOR_SIZE)) {
         disk_sector_t sector_pos = byte_to_sector(pos);
 
         if (sector_pos < DIRECT_INDEX_RANGE) {
@@ -265,12 +265,8 @@ bool alloc_sectors_grow(struct inode *inode, disk_sector_t sector, size_t sector
     size_t i, j;
     static char zeros[DISK_SECTOR_SIZE];
 
-    //struct inode_disk previous_data;
-    //memcpy(&previous_data, disk_inode, sizeof(struct inode_disk));
-
-    //printf("%d\n", disk_inode->length);
     size_t pos = byte_to_sector(disk_inode->length);
-    inode->data.length = newlength;
+    //inode->data.length = newlength;
 
     //printf("current %dst sector -> grow to %d sectors\n", pos, sectors);
        
@@ -583,6 +579,7 @@ inode_open (disk_sector_t sector)
   inode->sector = sector;
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
+  //inode->writing_cnt = 0;
   inode->removed = false;
   struct inode_disk *temp_disk = malloc(sizeof(struct inode_disk));
   //printf("copy\n");
@@ -594,6 +591,7 @@ inode_open (disk_sector_t sector)
   //printf("data copied well? %d\n", inode->data.length);
   
   lock_init(&inode->lock);
+  //sema_init(&inode->sema, 0);
   return inode;
 
 }
@@ -735,14 +733,23 @@ inode_remove (struct inode *inode)
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
 {
+
+  
     //printf("inode_read_at\n");
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
 
+  
+
   while (size > 0) 
-    {
+  {
+     /* if (inode->writing_cnt > 0) {
+          sema_down(&inode->sema);
+          }*/
+      if(offset > inode->data.length)
+          return bytes_read;
       /* Disk sector to read, starting byte offset within sector. */
-      disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset);
+      disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset, inode->data.length);
       //printf("sector_idx : %d\n", sector_idx);
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
@@ -775,32 +782,44 @@ off_t
 inode_write_at (struct inode *inode, const void *buffer_, off_t size,
                 off_t offset) 
 {
+
+      //inode->writing_cnt++;
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
 
   if (inode->deny_write_cnt)
     return 0;
 
+  bool grow = (inode->data.length < offset+size);
+  int newlength = offset+size;
+
+  if (grow) {
+      //printf("grow\n");
+      lock_acquire(&inode->lock);
+  }
+
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
-      disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset);
+      disk_sector_t sector_idx = byte_to_sector_indexed (inode, offset, inode->data.length);
       //printf("@SECTOR %d\n", sector_idx);
 
       if (sector_idx == -1) {   //File grow
           int grow_bytes = offset+size - inode->data.length;
           if (grow_bytes > 0) {
-              lock_acquire(&(inode->lock));
+              //lock_acquire(&(inode->lock));
               int sectors = bytes_to_sectors (offset + size);
               //printf("now %d grow to %d : allocate %d\n", inode_length(inode), offset+size, sectors);
 
-              alloc_sectors_grow(inode, inode->sector, sectors, offset+size);
-              sector_idx = byte_to_sector_indexed (inode, offset);
+              alloc_sectors_grow(inode, inode->sector, sectors, newlength);
+              sector_idx = byte_to_sector_indexed (inode, offset,newlength);
               //printf("new sector_idx : %d\n", sector_idx);
-              lock_release(&(inode->lock));
+              //lock_release(&(inode->lock));
           }
       }
       //printf("*** write to sector %d [offset : %d, size : %d]\n", sector_idx, offset, size);
+
+
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -812,15 +831,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       int chunk_size = size < sector_left ? size : sector_left;
       if (chunk_size <= 0)
         break;
-
-      if (inode_length(inode) < offset + chunk_size) {
-          inode->data.length = offset + chunk_size;
-          struct inode_disk *temp_disk = malloc(sizeof (struct inode_disk));
-          inode_data_to_disk(temp_disk, &inode->data);
-          disk_write(filesys_disk, inode->sector, temp_disk);
-          free(temp_disk);
-      }
-
 
       if (sector_ofs == 0 && chunk_size == DISK_SECTOR_SIZE) 
         {
@@ -841,11 +851,29 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
             write_to_cache(sector_idx, sector_ofs, buffer + bytes_written, chunk_size, false);
         }
 
+      /* Update length */
+      if (inode_length(inode) < offset + chunk_size) {
+          inode->data.length = offset + chunk_size;
+          struct inode_disk *temp_disk = malloc(sizeof (struct inode_disk));
+          inode_data_to_disk(temp_disk, &inode->data);
+          disk_write(filesys_disk, inode->sector, temp_disk);
+          free(temp_disk);
+      }
+
       /* Advance. */
       size -= chunk_size;
       offset += chunk_size;
       bytes_written += chunk_size;
     }
+
+  /*if (inode->writing_cnt-- == 1) {
+      // Last writing thread should wake up reading thread 
+      if (!list_empty(&inode->sema.waiters))
+        sema_up(&inode->sema);
+  }*/
+
+  if (grow)
+      lock_release(&inode->lock);
 
   return bytes_written;
 }
