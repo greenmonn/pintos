@@ -584,13 +584,16 @@ inode_open (disk_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-  struct inode_disk temp_disk;
+  struct inode_disk *temp_disk = malloc(sizeof(struct inode_disk));
   //printf("copy\n");
-  disk_read (filesys_disk, inode->sector, &temp_disk);
-  inode_disk_to_data(&inode->data, &temp_disk);
+  disk_read (filesys_disk, inode->sector, temp_disk);
+  inode_disk_to_data(&inode->data, temp_disk);
+  free(temp_disk);
   //printf("copy end\n");
   //printf("inode_open\n");
   //printf("data copied well? %d\n", inode->data.length);
+  
+  lock_init(&inode->lock);
   return inode;
 
 }
@@ -783,12 +786,14 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       if (sector_idx == -1) {   //File grow
           int grow_bytes = offset+size - inode->data.length;
           if (grow_bytes > 0) {
+              lock_acquire(&(inode->lock));
               int sectors = bytes_to_sectors (offset + size);
               //printf("now %d grow to %d : allocate %d\n", inode_length(inode), offset+size, sectors);
 
               alloc_sectors_grow(inode, inode->sector, sectors, offset+size);
               sector_idx = byte_to_sector_indexed (inode, offset);
               //printf("new sector_idx : %d\n", sector_idx);
+              lock_release(&(inode->lock));
           }
       }
       //printf("*** write to sector %d [offset : %d, size : %d]\n", sector_idx, offset, size);
@@ -806,9 +811,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
       if (inode_length(inode) < offset + chunk_size) {
           inode->data.length = offset + chunk_size;
-          struct inode_disk temp_disk;
-          inode_data_to_disk(&temp_disk, &inode->data);
-          disk_write(filesys_disk, inode->sector, &temp_disk);
+          struct inode_disk *temp_disk = malloc(sizeof (struct inode_disk));
+          inode_data_to_disk(temp_disk, &inode->data);
+          disk_write(filesys_disk, inode->sector, temp_disk);
+          free(temp_disk);
       }
 
 

@@ -11,6 +11,7 @@
 
 /* The disk that contains the file system. */
 struct disk *filesys_disk;
+struct lock disk_lock;
 
 static void do_format (void);
 
@@ -23,6 +24,7 @@ filesys_init (bool format)
   if (filesys_disk == NULL)
     PANIC ("hd0:1 (hdb) not present, file system initialization failed");
 
+  lock_init(&disk_lock);
   inode_init ();
   free_map_init ();
   cache_init ();
@@ -149,10 +151,11 @@ do_format (void)
     PANIC ("root directory creation failed");
   struct dir *root_dir = dir_open_root();
   root_dir->inode->data.parent = ROOT_DIR_SECTOR;
-  struct inode_disk temp_disk;
-  inode_data_to_disk(&temp_disk, &root_dir->inode->data);
+  struct inode_disk *temp_disk = malloc(sizeof (struct inode_disk));
+  inode_data_to_disk(temp_disk, &root_dir->inode->data);
   //disk_write(filesys_disk, ROOT_DIR_SECTOR, 
-  disk_write(filesys_disk, ROOT_DIR_SECTOR, &temp_disk);
+  disk_write(filesys_disk, ROOT_DIR_SECTOR, temp_disk);
+  free(temp_disk);
   //dir_add_relative(root_dir, ".", ROOT_DIR_SECTOR);
   //dir_add_relative(root_dir, "..", ROOT_DIR_SECTOR);
   free_map_close ();

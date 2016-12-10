@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "filesys/off_t.h"
 #include "devices/disk.h"
+#include "threads/thread.h"
 #include <list.h>
 
 struct inode_disk 
@@ -43,6 +44,8 @@ struct inode
 	int deny_write_cnt;
 	struct inode_data data;
 	bool is_dir;
+
+    struct lock lock;
 };
 
 struct bitmap;

@@ -1160,7 +1160,7 @@ int mkdir (const char *dir) {
 int readdir (int fd, char *name) {
     //printf("readdir\n");
 	struct dir *dir_to_read = find_dir_desc(fd);
-	//if (!dir_to_read) return 0;
+	if (!dir_to_read) return 0;
     int ret = dir_readdir (dir_to_read, name);
     return ret;
 }
