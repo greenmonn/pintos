@@ -185,7 +185,7 @@ start_process (void *f_name)
           thread_current()->parent->is_child_load = 2;
           if (child != NULL) {
               child->load = 2;
-              child->status = -1;
+              //child->status = -1;
           }
 
           sema_up(&thread_current()->parent->sema);
@@ -193,8 +193,8 @@ start_process (void *f_name)
       }
 
       	  //printf("if not success:\n");
-      thread_exit ();
-      //exit(-1);
+      //thread_exit ();
+      exit(-1);
   }
 
   /* Start the user process by simulating a return from an

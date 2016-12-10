@@ -43,7 +43,6 @@ struct inode
 	bool removed;
 	int deny_write_cnt;
 	struct inode_data data;
-	bool is_dir;
 
     struct lock lock;
 };
