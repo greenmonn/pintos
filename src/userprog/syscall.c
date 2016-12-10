@@ -864,7 +864,6 @@ int read(int fd, void *buffer, unsigned size)
 int filesize(int fd) {
 	lock_acquire(&filesys_lock);
     struct file *target = find_file_desc(fd);
-
 	//lock_acquire(&filesys_lock);
     int ret = file_length(target);
     lock_release(&filesys_lock);
@@ -1167,8 +1166,10 @@ int readdir (int fd, char *name) {
 
 int isdir(int fd) {
 	struct dir *dir= find_dir_desc(fd);
-	if (!dir) return 0;
-	return dir->inode->is_dir;
+	if (!dir) {
+		return 0;
+	}
+	return dir->inode->data.is_dir;
 }
 
 int inumber (int fd) {

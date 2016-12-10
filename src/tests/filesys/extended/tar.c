@@ -126,8 +126,8 @@ archive_ordinary_file (const char *file_name, int file_fd,
 {
   bool read_error = false;
   bool success = true;
+  
   int file_size = filesize (file_fd);
-
   if (!write_header (file_name, '0', file_size, 0644, archive_fd, write_error))
     return false;
 
