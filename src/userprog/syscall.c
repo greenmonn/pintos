@@ -459,17 +459,7 @@ int remove(const char *file) {
     }*/
 
 	if (!temp_inode) {
-        //printf("lookup failed\n");
-        
-        struct dir_entry e;
-        size_t ofs;
-
-        for (ofs = 0; inode_read_at(temp_dir->inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e) {
-           // if (e.in_use) {
-                //printf("entry %s - %d\n", e.name, e.inode_sector);
-                //printf("strcmp? %d\n", strcmp(e.name, name));
-           // }
-        }
+        //printf("lookup failed\n"); 
 		return false;
 	}
 
@@ -483,6 +473,7 @@ int remove(const char *file) {
         lock_acquire(&filesys_lock);
         ret = filesys_remove(name, temp_dir);
         lock_release(&filesys_lock);
+
     } else {
         /* remove directory */
         //1. Check whether it is empty
@@ -493,6 +484,8 @@ int remove(const char *file) {
             //printf("entry name : %s\n", e.name);
             if (e.in_use)
             {
+                dir_close(temp_dir);
+                inode_close(temp_inode);
                 return false;
             }
         }
@@ -501,6 +494,8 @@ int remove(const char *file) {
         //2. if empty, successfully remove
         ret = dir_remove(temp_dir, name);
     }
+
+    inode_close(temp_inode);
     dir_close(temp_dir);
     frame_unpin((void*)file, strlen(file)+1);
     return ret;

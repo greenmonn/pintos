@@ -73,13 +73,16 @@ filesys_create (const char *name, off_t initial_size, struct dir *file_dir)
   } else {
       dir = dir_reopen(file_dir);
   }
+
+  bool free_map_success, inode_create_success, dir_add_success;
   bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size, false)
-                  && dir_add (dir, name, inode_sector));
+                  && (free_map_success = free_map_allocate (1, &inode_sector))
+                  && (inode_create_success = inode_create (inode_sector, initial_size, false))
+                  && (dir_add_success = dir_add (dir, name, inode_sector)));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
+  //printf("%d %d %d\n", free_map_success, inode_create_success, dir_add_success);
 
   return success;
 }

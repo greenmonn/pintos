@@ -620,6 +620,8 @@ inode_get_inumber (const struct inode *inode)
 void
 inode_close (struct inode *inode) 
 {
+    //if (inode->removed)
+    //     printf("inode_close : open_cnt %d\n", inode->open_cnt);
   /* Ignore null pointer. */
   if (inode == NULL)
     return;
@@ -633,6 +635,7 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
      if (inode->removed) 
         {
+            //printf("Deallocate!\n");
             struct inode_data *disk_inode = &inode->data;
             int length = inode->data.length;
             int sectors = bytes_to_sectors (length);
@@ -723,6 +726,7 @@ inode_remove (struct inode *inode)
 {
   ASSERT (inode != NULL);
   inode->removed = true;
+  //printf("removed\n");
 }
 
 /* Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
